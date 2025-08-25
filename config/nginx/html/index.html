@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="description" content="7Gram.xyz Network Dashboard - Access all your home network services from one centralized, intelligent dashboard with real-time monitoring">
+    <meta name="keywords" content="home dashboard, network services, media server, home automation, self-hosted, 7gram">
+    <meta name="author" content="nuniesmith">
+    <meta name="robots" content="noindex, nofollow">
+    
+    <!-- Accessibility and Color Scheme -->
+    <meta name="color-scheme" content="light dark">
+    
+    <!-- Security Headers -->
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
+    
+    <!-- PWA Meta Tags -->
+    <meta name="application-name" content="7Gram Dashboard">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="7Gram Dashboard">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="msapplication-TileColor" content="#667eea">
+    <meta name="msapplication-tap-highlight" content="no">
+    <meta name="theme-color" content="#667eea" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#1a1a2e" media="(prefers-color-scheme: dark)">
+    
+    <!-- Preconnect for Performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" dns-prefetch href="https://7gram.xyz">
+    <link rel="preconnect" dns-prefetch href="https://api.7gram.xyz">
+    
+    <!-- Icons and Manifest -->
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏠</text></svg>">
+    <link rel="icon" type="image/x-icon" href="/assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/images/icons/icon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/images/icons/icon-16x16.png">
+    <link rel="apple-touch-icon" href="/assets/images/icons/icon-192x192.png">
+    
+    <title>🏠 7Gram Dashboard</title>
+    
+    <!-- Load CSS synchronously to prevent FOUC -->
+    <link rel="stylesheet" href="assets/css/main.css">
+    <link rel="stylesheet" href="assets/css/components.css">
+    <link rel="stylesheet" href="assets/css/themes/default.css" id="theme-stylesheet">
+    
+    <!-- Critical inline styles -->
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #212529;
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+        
+        .container {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .loading-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 50vh;
+            text-align: center;
+        }
+        
+        .loading-spinner {
+            position: relative;
+            margin-bottom: 2rem;
+        }
+        
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-left: 4px solid #ffffff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 1.2rem;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+        }
+        
+        .loading-subtext {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.9rem;
+        }
+        
+        .error-container {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 50vh;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.9);
+        }
+        
+        .retry-button {
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 50px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 1rem;
+        }
+        
+        .retry-button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        /* Prevent FOUC */
+        .dashboard-content {
+            visibility: hidden;
+        }
+        
+        .dashboard-loaded .dashboard-content {
+            visibility: visible;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header id="dashboard-header" role="banner">
+            <!-- Dynamic header content -->
+        </header>
+
+        <!-- Main Content -->
+        <main id="main-content" role="main">
+            <!-- Status Bar -->
+            <div id="status-bar" class="status-bar" style="display: none;">
+                <div class="status-item">
+                    <span id="services-online">0</span> Online
+                </div>
+                <div class="status-item">
+                    <span id="services-warning">0</span> Warning  
+                </div>
+                <div class="status-item">
+                    <span id="services-offline">0</span> Offline
+                </div>
+                <div class="status-item">
+                    Last updated: <span id="last-updated">Never</span>
+                </div>
+            </div>
+            
+            <!-- Search Container -->
+            <div id="search-container" class="search-container dashboard-content" style="display: none;">
+                <div class="search-wrapper">
+                    <!-- FIXED: Changed id to match what searchManager expects -->
+                    <input 
+                        type="text" 
+                        id="search" 
+                        placeholder="🔍 Search services... (Ctrl+K)"
+                        aria-label="Search services"
+                        autocomplete="off"
+                        spellcheck="false"
+                    >
+                    <!-- Also provide fallback ID -->
+                    <input 
+                        type="text" 
+                        id="global-search" 
+                        style="display: none;"
+                        placeholder="🔍 Search services... (Ctrl+K)"
+                        aria-label="Search services"
+                        autocomplete="off"
+                        spellcheck="false"
+                    >
+                    <div id="search-suggestions" class="search-suggestions" style="display: none;"></div>
+                </div>
+                <div id="quick-filters" class="quick-filters"></div>
+            </div>
+            
+            <!-- Services Container -->
+            <div id="services-container" aria-live="polite">
+                <div class="loading-container" id="loading-container">
+                    <div class="loading-spinner">
+                        <div class="spinner" aria-hidden="true"></div>
+                    </div>
+                    <div class="loading-text">Loading 7Gram Dashboard...</div>
+                    <div class="loading-subtext" id="loading-status">Initializing...</div>
+                </div>
+                
+                <!-- Error State -->
+                <div class="error-container" id="error-container">
+                    <div style="font-size: 4rem;">⚠️</div>
+                    <h3>Unable to Load Dashboard</h3>
+                    <p id="error-message">Something went wrong while loading your services.</p>
+                    <button class="retry-button" onclick="location.reload()">
+                        🔄 Retry
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer id="dashboard-footer" role="contentinfo" class="dashboard-content">
+            <!-- Dynamic footer content -->
+        </footer>
+    </div>
+
+    <!-- Fallback Dashboard (if modules fail) -->
+    <script>
+        // Fallback timeout to prevent infinite loading
+        let fallbackTimeout = setTimeout(() => {
+            console.warn('⚠️ Fallback activated: Modules took too long to load');
+            showFallbackDashboard();
+        }, 15000); // 15 second timeout
+
+        function clearFallbackTimeout() {
+            if (fallbackTimeout) {
+                clearTimeout(fallbackTimeout);
+                fallbackTimeout = null;
+            }
+        }
+
+        function updateLoadingStatus(message) {
+            const statusEl = document.getElementById('loading-status');
+            if (statusEl) {
+                statusEl.textContent = message;
+            }
+        }
+
+        function showFallbackDashboard() {
+            clearFallbackTimeout();
+            const container = document.getElementById('services-container');
+            if (container) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 2rem; color: rgba(255,255,255,0.9);">
+                        <h2>🌐 7Gram Dashboard</h2>
+                        <p>Fallback mode activated. Some features may be limited.</p>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-top: 2rem;">
+                            <div style="background: rgba(255,255,255,0.1); padding: 1.5rem; border-radius: 12px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);">
+                                <h3>🎬 Media Services</h3>
+                                <p>Emby, Jellyfin, Plex</p>
+                                <a href="https://emby.7gram.xyz" target="_blank" style="color: white; text-decoration: none; background: rgba(255,255,255,0.2); padding: 0.5rem 1rem; border-radius: 20px; display: inline-block; margin-top: 1rem;">Open Emby</a>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.1); padding: 1.5rem; border-radius: 12px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);">
+                                <h3>🤖 AI Services</h3>
+                                <p>Open WebUI, Ollama</p>
+                                <a href="https://ai.7gram.xyz" target="_blank" style="color: white; text-decoration: none; background: rgba(255,255,255,0.2); padding: 0.5rem 1rem; border-radius: 20px; display: inline-block; margin-top: 1rem;">Open AI</a>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.1); padding: 1.5rem; border-radius: 12px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);">
+                                <h3>🏠 Home Services</h3>
+                                <p>Home Assistant, Pi-hole</p>
+                                <a href="https://home.7gram.xyz" target="_blank" style="color: white; text-decoration: none; background: rgba(255,255,255,0.2); padding: 0.5rem 1rem; border-radius: 20px; display: inline-block; margin-top: 1rem;">Open Home</a>
+                            </div>
+                        </div>
+                        <div style="margin-top: 2rem;">
+                            <button onclick="location.reload()" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 0.75rem 1.5rem; border-radius: 25px; cursor: pointer; font-size: 1rem;">
+                                🔄 Try Again
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+            document.body.classList.add('dashboard-loaded');
+        }
+
+        function hideLoading() {
+            const loadingContainer = document.getElementById('loading-container');
+            if (loadingContainer) {
+                loadingContainer.style.display = 'none';
+            }
+            document.body.classList.add('dashboard-loaded');
+        }
+
+        function showError(message, details = null) {
+            clearFallbackTimeout();
+            const loadingContainer = document.getElementById('loading-container');
+            const errorContainer = document.getElementById('error-container');
+            const errorMessage = document.getElementById('error-message');
+            
+            if (loadingContainer) loadingContainer.style.display = 'none';
+            if (errorContainer) errorContainer.style.display = 'flex';
+            if (errorMessage) {
+                errorMessage.textContent = message;
+                if (details) {
+                    const detailsEl = document.createElement('details');
+                    detailsEl.innerHTML = `
+                        <summary style="cursor: pointer; margin-bottom: 0.5rem;">Technical Details</summary>
+                        <pre style="text-align: left; font-size: 0.8rem; margin-top: 0.5rem; white-space: pre-wrap;">${details}</pre>
+                    `;
+                    errorMessage.appendChild(detailsEl);
+                }
+            }
+            console.error('Dashboard Error:', message, details);
+        }
+    </script>
+
+    <!-- Load modules with better error handling -->
+    <script>
+        // Update loading status
+        updateLoadingStatus('Loading JavaScript modules...');
+
+        // Load modules sequentially with fallbacks
+        async function loadDashboard() {
+            try {
+                // Try to load main.js first (most important)
+                updateLoadingStatus('Loading main module...');
+                const mainScript = document.createElement('script');
+                mainScript.src = './assets/js/main.js';
+                mainScript.type = 'module';
+                
+                await new Promise((resolve, reject) => {
+                    mainScript.onload = resolve;
+                    mainScript.onerror = reject;
+                    document.head.appendChild(mainScript);
+                });
+                
+                console.log('✅ Main module loaded');
+                
+                // Load other modules
+                const modules = [
+                    { name: 'serviceLoader', path: './assets/js/modules/serviceLoader.js' },
+                    { name: 'searchManager', path: './assets/js/modules/searchManager.js' },
+                    { name: 'themeManager', path: './assets/js/modules/themeManager.js' },
+                    { name: 'componentLoader', path: './assets/js/modules/componentLoader.js' },
+                    { name: 'healthChecker', path: './assets/js/modules/healthChecker.js' }
+                ];
+                
+                for (const module of modules) {
+                    try {
+                        updateLoadingStatus(`Loading ${module.name}...`);
+                        const script = document.createElement('script');
+                        script.src = module.path;
+                        script.type = 'module';
+                        
+                        await new Promise((resolve, reject) => {
+                            script.onload = resolve;
+                            script.onerror = reject;
+                            document.head.appendChild(script);
+                        });
+                        
+                        console.log(`✅ ${module.name} module loaded`);
+                    } catch (error) {
+                        console.warn(`⚠️ Failed to load ${module.name}:`, error);
+                        // Continue loading other modules
+                    }
+                }
+                
+                updateLoadingStatus('Finalizing...');
+                
+                // Give modules time to initialize
+                setTimeout(() => {
+                    clearFallbackTimeout();
+                    hideLoading();
+                    console.log('✅ Dashboard loading complete');
+                }, 1000);
+                
+            } catch (error) {
+                console.error('❌ Failed to load dashboard:', error);
+                showError('Failed to load dashboard modules. Using fallback mode.');
+                setTimeout(showFallbackDashboard, 2000);
+            }
+        }
+
+        // Start loading when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', loadDashboard);
+        } else {
+            loadDashboard();
+        }
+
+        // Global error handling
+        window.addEventListener('error', (event) => {
+            console.error('❌ Global error:', event.error);
+        });
+
+        window.addEventListener('unhandledrejection', (event) => {
+            console.error('❌ Unhandled promise rejection:', event.reason);
+        });
+    </script>
+
+    <!-- Service Worker (simplified) -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js')
+                .then(reg => console.log('✅ Service Worker registered'))
+                .catch(err => console.warn('⚠️ Service Worker registration failed:', err));
+        }
+    </script>
+</body>
+</html>

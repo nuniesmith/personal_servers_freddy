@@ -1,0 +1,194 @@
+# Docker Compose for FREDDY - HTTPS & Authelia Optimized with SSL Certificate Generation
+# Low power server handling core services: reverse proxy, auth, DNS, home automation
+
+# Custom networks for secure service communication
+networks:
+  frontend:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16
+  backend:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.31.0.0/16
+
+volumes:
+  # System volumes
+  pihole_data:
+  pihole_dnsmasq_data:
+  homeassistant_data:
+  syncthing_data:
+
+  # Monitoring and Management
+  portainer_data:
+
+services:
+  # =============================================================================
+  # SYSTEM SERVICES
+  # =============================================================================
+
+  # pihole - network-wide ad blocking DNS server
+  pihole:
+    image: pihole/pihole:latest
+    container_name: pihole
+    environment:
+      - TZ=${TZ:-America/Toronto}
+      - WEBPASSWORD=${PIHOLE_PASSWORD:-changeme}
+      - FTLCONF_LOCAL_IPV4=${PIHOLE_SERVER_IP:-192.168.1.100}
+      - PIHOLE_DNS_=${PIHOLE_DNS:-8.8.8.8;8.8.4.4}
+      - DNSMASQ_LISTENING=all
+      - WEBTHEME=${PIHOLE_THEME:-default-dark}
+      - VIRTUAL_HOST=${PIHOLE_VIRTUAL_HOST:-pihole.local}
+      - PROXY_LOCATION=pihole
+      - FTLCONF_REPLY_ADDR4=${PIHOLE_SERVER_IP:-192.168.1.100}
+    volumes:
+      # CONFIG: Git-managed configuration (if any)
+      - ./config/pihole:/etc/pihole
+      # DATA: Application data
+      - pihole_data:/etc/pihole
+      - pihole_dnsmasq_data:/etc/dnsmasq.d
+    ports:
+      - "53:53/tcp"     # DNS TCP
+      - "53:53/udp"     # DNS UDP
+      - "8080:80/tcp"   # Web interface (changed from 80 to avoid nginx conflict)
+      # Note: 443 removed - nginx handles HTTPS termination
+    restart: unless-stopped
+    networks:
+      frontend:
+        ipv4_address: 172.30.0.10
+      backend:
+    cap_add:
+      - NET_ADMIN
+    dns:
+      - 127.0.0.1
+      - 8.8.8.8
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "google.com", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  # home assistant (requires host network for device discovery)
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homeassistant
+    privileged: true
+    network_mode: host  # Required for device discovery
+    environment:
+      - TZ=${TZ:-America/Toronto}
+    volumes:
+      # CONFIG: Git-managed configuration
+      - ./config/homeassistant:/config
+      # DATA: Application data and history  
+      - homeassistant_data:/config/.storage
+      # SYSTEM: Required for host access
+      - /etc/localtime:/etc/localtime:ro
+      - /run/dbus:/run/dbus:ro
+      # USB devices for Zigbee/Z-Wave
+      - /dev:/dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8123/api/", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  # syncthing - file synchronization
+  syncthing:
+    image: lscr.io/linuxserver/syncthing:latest
+    container_name: syncthing
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/Toronto}
+    volumes:
+      # CONFIG: Git-managed configuration
+      - ./config/syncthing:/config
+      # DATA: Application data
+      - syncthing_data:/data
+      # SYNC: Directories to sync
+      - ${SYNCTHING_DATA_PATH:-/home/syncthing}:/sync
+    ports:
+      - "8384:8384"  # Web UI
+      - "22000:22000/tcp"  # File transfer
+      - "22000:22000/udp"  # File transfer
+      - "21027:21027/udp"  # Discovery
+    restart: unless-stopped
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8384/rest/system/status", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  # =============================================================================
+  # MONITORING SERVICES
+  # =============================================================================
+
+  # watchtower - automatic container updates (nginx excluded)
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    environment:
+      - TZ=${TZ:-America/Toronto}
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=86400
+      - WATCHTOWER_ROLLING_RESTART=true
+      - WATCHTOWER_INCLUDE_RESTARTING=true
+      - WATCHTOWER_INCLUDE_STOPPED=false
+      - WATCHTOWER_REVIVE_STOPPED=false
+      - WATCHTOWER_SCHEDULE=${WATCHTOWER_SCHEDULE:-0 2 * * *}
+      - WATCHTOWER_NOTIFICATIONS=${WATCHTOWER_NOTIFICATIONS:-}
+      - WATCHTOWER_NOTIFICATION_URL=${WATCHTOWER_NOTIFICATION_URL:-}
+      - WATCHTOWER_MONITOR_ONLY=${WATCHTOWER_MONITOR_ONLY:-false}
+      - WATCHTOWER_NOTIFICATIONS_LEVEL=info
+      - WATCHTOWER_LABEL_ENABLE=true
+    volumes:
+      # SYSTEM: Required for Docker management
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    networks:
+      - backend
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+
+  # portainer - docker management ui
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    environment:
+      - TZ=${TZ:-America/Toronto}
+    volumes:
+      # SYSTEM: Required for Docker management
+      - /var/run/docker.sock:/var/run/docker.sock
+      # DATA: Application data
+      - portainer_data:/data
+    ports:
+      - "9000:9000"   # HTTP interface
+      - "9443:9443"   # HTTPS interface (if SSL enabled)
+    restart: unless-stopped
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/api/status", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    # Security enhancements
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
