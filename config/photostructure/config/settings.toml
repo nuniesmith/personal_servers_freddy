@@ -1,0 +1,1430 @@
+
+#
+# Hello!
+#
+# These are system settings for PhotoStructure.
+#
+#  - Please shut down PhotoStructure before editing this file.
+#
+#  - PhotoStructure has TWO settings files! See
+#    <https://photostructure.com/settings/#omg-why-2> for why.
+#
+#  - See <https://photostructure.com/settings/>
+#    for details about PhotoStructure settings.
+#
+#  - Most settings have reasonable defaults, which are provided after the
+#    description. Remove the "#" from the beginning of the line to override
+#    the default.
+#
+#  - Not all settings have a default, but those that do are included and
+#    commented-out. Remove the "# " prefix from the line to set the value.
+#
+#  - All duration settings end with "Duration" or "Ms" (for milliseconds).
+#    See
+# <https://photostructure.com/getting-started/advanced-settings#duration> for
+# details.
+#
+# Thanks for using PhotoStructure! Visit <https://forum.photostructure.com/>
+# if you find any bugs or have any questions, ideas, or feedback. We'd love to
+# hear from you.
+#
+# --
+#
+# PhotoStructure v2.1.0-alpha.7
+
+
+
+##############################################################################
+#
+# Settings for System.paths:
+#
+
+
+# +-----------------------+
+# |  copyAssetsToLibrary  |
+# +-----------------------+
+#
+# Should PhotoStructure copy photos and videos to your PhotoStructure Library?
+# This setting holds the value for the welcome page's "May PhotoStructure
+# organize your photos and videos?" section, and is called "automatic
+# organization" on the website.
+#
+# Read more about this setting here:
+# <https://photostructure.com/getting-started/automatic-library-organization/>.
+#
+# environment keys: "PS_COPY_ASSETS_TO_LIBRARY"
+#
+# copyAssetsToLibrary = true
+
+
+# +--------------+
+# |  libraryDir  |
+# +--------------+
+#
+# This is the absolute path to your PhotoStructure library. If missing, or set
+# to an empty string, the welcome page will be shown when PhotoStructure
+# launches. Use native file separators (so on windows, use back-slashes).
+#
+# aliases: "libraryPath" or "library"
+# environment keys: "PS_LIBRARY_DIR", "PS_LIBRARY_PATH" or "PS_LIBRARY"
+#
+# libraryDir = "/ps/library"
+
+
+# +-----------------+
+# |  scanAllDrives  |
+# +-----------------+
+#
+# Should PhotoStructure scan all folders on all drives available to this
+# computer for photos and videos?
+#
+# environment keys: "PS_SCAN_ALL_DRIVES"
+#
+# scanAllDrives = true
+
+
+# +-------------+
+# |  scanPaths  |
+# +-------------+
+#
+# This holds an array of absolute paths to scan for assets. If you are setting
+# this via an environment variable, you may use either standard PATH
+# formatting, like `PS_SCAN_PATHS="/path/one:/path/two"`, or use JSON
+# encoding, like `PS_SCAN_PATHS='["/path/one","/path/two"]'`.
+#
+# aliases: "scanPath"
+# environment keys: "PS_SCAN_PATHS" or "PS_SCAN_PATH"
+#
+# scanPaths = [
+#   "/root/Pictures"
+# ]
+
+
+# +------------+
+# |  cacheDir  |
+# +------------+
+#
+# Where would you like PhotoStructure's scratch file directory? This must be a
+# fast, local disk with several gigabytes free.
+#
+# Note that if PS_FORCE_LOCAL_DB_REPLICA is enabled, the local DB replica will
+# be stored in this directory while PhotoStructure is running: don't delete
+# it!
+#
+# If this is set to /tmp PhotoStructure will write to a user-specific
+# /tmp/.photostructure-cache-$UID directory.
+#
+# environment keys: "PS_CACHE_DIR"
+#
+# cacheDir = "/ps/tmp"
+
+
+# +-----------------------+
+# |  forceLocalDbReplica  |
+# +-----------------------+
+#
+# Libraries on remote filesystems can suffer from bad performance and
+# inconsistent transactions due to slow file I/O and missing file locking
+# mechanics. When opening libraries on remote filesystems, or if this setting
+# is `true`, PhotoStructure will copy the library database to the `cacheDir`
+# and perform I/O against this local replica. Changes made to the local db
+# replica are then periodically copied back to the remote library.
+#
+# For details, see
+# <https://forum.photostructure.com/t/whats-force-local-db-replica/837>.
+#
+# environment keys: "PS_FORCE_LOCAL_DB_REPLICA"
+#
+# forceLocalDbReplica = true
+
+
+# +----------------+
+# |  originalsDir  |
+# +----------------+
+#
+# This is the directory that PhotoStructure uses to store original images when
+# "copyAssetsToLibrary" is enabled. Absolute paths are supported. Relative
+# paths are evaluated from your libraryDir. This setting defaults to ".",
+# which is the same as your PhotoStructure library directory, unless you are
+# on docker, and a /ps/originals directory exists.
+#
+# If you open your PhotoStructure library on a different computer, and that
+# computer doesn't have access to your originals volume, full-screen zoom
+# won't work, and non-transcoded videos will not play.
+#
+# This system setting needs to be set appropriately on different computers (it
+# won't be set automatically!)
+#
+# If you have a large library and want to use an SSD, we recommend you set
+# your libraryDir to your SSD, and use this setting to store your originals on
+# a larger volume, rather than using the "previewsDir" setting.
+#
+# See <https://forum.photostructure.com/t/hybrid-photostructure-libraries/775>
+# and
+# <https://forum.photostructure.com/t/new-easy-mode-for-docker-coming-in-v2-1/1278/6?u=mrm>.
+#
+# environment keys: "PS_ORIGINALS_DIR"
+#
+# originalsDir = "."
+
+
+# +-----------+
+# |  pidFile  |
+# +-----------+
+#
+# This is the absolute path to the PID file for the main process. This is
+# optional and only used by PhotoStructure for Servers. Make sure the UID/GID
+# that PhotoStructure runs as can read and write to this file.
+#
+# environment keys: "PS_PID_FILE" or "PIDFILE"
+#
+# pidFile = "/var/run/photostructure.pid"
+
+
+# +---------------+
+# |  previewsDir  |
+# +---------------+
+#
+# This is the directory that PhotoStructure uses to store preview images. This
+# defaults to the ".photostructure/previews" directory inside your
+# PhotoStructure library. Absolute paths here are supported, but if you keep
+# your library and previews directory separated, take care when you open your
+# library on different computers, as this setting needs to be adjusted for
+# those computers as well.
+#
+# NOTE: "originalDirs" is recommended instead of this setting; If you get
+# "previewsDir" wrong, your library won't work. If you get "originalsDir"
+# wrong, you just break full-screen asset zooming and playback for
+# non-transcoded videos.
+#
+# See
+# <https://forum.photostructure.com/t/hybrid-photostructure-libraries/775>.
+#
+# environment keys: "PS_PREVIEWS_DIR"
+#
+# previewsDir = ".photostructure/previews"
+
+
+# +------------------+
+# |  scanMyPictures  |
+# +------------------+
+#
+# Deprecated. If set, PhotoStructure will automatically add your pictures
+# directory to your `scanPaths` setting and then flip this setting back to
+# false.
+#
+# environment keys: "PS_SCAN_MY_PICTURES"
+#
+# scanMyPictures = false
+
+
+
+##############################################################################
+#
+# Settings for System.desktops:
+#
+
+
+# +-------------------+
+# |  autoHideMenuBar  |
+# +-------------------+
+#
+# If true, PhotoStructure for Desktops on Windows and Linux will auto hide the
+# menu bar unless the Alt key is pressed.
+#
+# environment keys: "PS_AUTO_HIDE_MENU_BAR"
+#
+# autoHideMenuBar = false
+
+
+# +-----------------+
+# |  updateChannel  |
+# +-----------------+
+#
+# TL:DR; keep this on "stable." This setting only applies to PhotoStructure
+# for Desktops, and controls which builds of PhotoStructure you are eligible
+# to automatically update to. Please note that "alpha" builds may not even
+# launch, and "beta" builds have not been thoroughly tested. See
+# <https://forum.photostructure.com/t/alpha-beta-stable-and-latest-what-should-you-use/274>.
+#
+# environment keys: "PS_UPDATE_CHANNEL"
+# validValues: "alpha", "beta" or "stable"
+#
+# updateChannel = "alpha"
+
+
+# +----------------------+
+# |  updateCheckMinutes  |
+# +----------------------+
+#
+# While running, PhotoStructure will check periodically for updates. The
+# default is daily.
+#
+# Set this to 0 to disable automatic updates.
+#
+# environment keys: "PS_UPDATE_CHECK_MINUTES"
+#
+# updateCheckMinutes = 1440
+
+
+# +------------------+
+# |  updateOnLaunch  |
+# +------------------+
+#
+# If true, PhotoStructure will check for updates automatically on launch.
+#
+# environment keys: "PS_UPDATE_ON_LAUNCH"
+#
+# updateOnLaunch = true
+
+
+
+##############################################################################
+#
+# Settings for System.filesystem:
+#
+
+
+# +--------------------------+
+# |  ignoredFilesystemTypes  |
+# +--------------------------+
+#
+# Volumes with these filesystem types will never be scanned or imported.
+#
+# These are only relevant to Linux systems.
+#
+# environment keys: "PS_IGNORED_FILESYSTEM_TYPES"
+#
+# ignoredFilesystemTypes = [
+#   "cgroup",
+#   "debugfs",
+#   "gvfsd-fuse",
+#   "none",
+#   "sunrpc",
+#   "sysfs",
+#   "tracefs"
+# ]
+
+
+# +--------------------------+
+# |  ignoreUnhealthyVolumes  |
+# +--------------------------+
+#
+# When true, PhotoStructure ignores volumes that are not healthy (due to
+# needing filesystem checks, or remote filesystems that are not available).
+#
+# environment keys: "PS_IGNORE_UNHEALTHY_VOLUMES"
+#
+# ignoreUnhealthyVolumes = true
+
+
+# +---------------+
+# |  mountpoints  |
+# +---------------+
+#
+# If set, this value will be used instead of the cross-platform mountpoints()
+# method.
+#
+# environment keys: "PS_MOUNTPOINTS"
+#
+# mountpoints = []
+
+
+# +--------------------+
+# |  mountpointsTtlMs  |
+# +--------------------+
+#
+# How frequently should PhotoStructure scan for new volumes (so PhotoStructure
+# can detect when drives are inserted or ejected)? Shorter than 10-15 seconds
+# may cause issues on Windows. This defaults to 15 minutes on Windows, which
+# relies on polling. On Linux and macOS this is set to 0 because findmnt/gio
+# and diskutil notify mountpoint changes without polling.
+#
+# environment keys: "PS_MOUNTPOINTS_TTL_MS"
+#
+# mountpointsTtlMs = "0"
+
+
+# +-----------------------+
+# |  readVolumeUuidFiles  |
+# +-----------------------+
+#
+# When true, PhotoStructure uses ".uuid" files found in the root directory of
+# volumes as the volume UUID, which can help with cross-host library
+# portability. Set this to false if you don't want PhotoStructure to read
+# these ".uuid" files. See https://photostructure.com/faq/what-is-a-volume for
+# more information.
+#
+# environment keys: "PS_READ_VOLUME_UUID_FILES"
+#
+# readVolumeUuidFiles = true
+
+
+# +-------------------------+
+# |  remoteFilesystemTypes  |
+# +-------------------------+
+#
+# Filesystems with these types should always be considered "remote".
+#
+# environment keys: "PS_REMOTE_FILESYSTEM_TYPES"
+#
+# remoteFilesystemTypes = [
+#   "sshfs",
+#   "s3fs"
+# ]
+
+
+# +------------------------+
+# |  retainFileBirthtimes  |
+# +------------------------+
+#
+# Should PhotoStructure try to retain file birthtime metadata when it copies
+# assets? This is only supported on Windows and macOS.
+#
+# environment keys: "PS_RETAIN_FILE_BIRTHTIMES"
+#
+# retainFileBirthtimes = false
+
+
+# +-----------------+
+# |  statTimeoutMs  |
+# +-----------------+
+#
+# Filesystem traversal can be dangerous business with scratched CDROMs and old
+# busted hard drives. To prevent PhotoStructure from getting "stuck" when
+# trying to read these devices, it will timeout directory iteration if stat()
+# or readdir() exceeds this value. The default of 30 seconds should cover most
+# issues with spun-down hard drives and NAS/WAN latency.
+#
+# environment keys: "PS_STAT_TIMEOUT_MS"
+#
+# statTimeoutMs = "30s"
+
+
+# +-----------------------+
+# |  validateMountpoints  |
+# +-----------------------+
+#
+# When true, PhotoStructure ignores volumes whose mountpoints do not exist.
+#
+# environment keys: "PS_VALIDATE_MOUNTPOINTS"
+#
+# validateMountpoints = true
+
+
+# +-----------------------+
+# |  volumeMetadataTtlMs  |
+# +-----------------------+
+#
+# How frequently should PhotoStructure reload volume metadata (like
+# bytes-free, which is used in a health check)? Values less than a minute are
+# not necessary.
+#
+# environment keys: "PS_VOLUME_METADATA_TTL_MS"
+#
+# volumeMetadataTtlMs = "15m"
+
+
+# +-------------------+
+# |  watchDebounceMs  |
+# +-------------------+
+#
+# How long to wait for a file to "settle down" and stop changing before the
+# file watcher notifies listeners that the file changed. Some applications
+# (like PhotoStructure) use work-in-progress "atomic" writes, but many
+# applications overwrite in-place, which can cause the file watcher to see
+# incomplete results until the write process is complete.
+#
+# The default is 500ms (½ second) to handle slow remote NASes and slow-writing
+# applications.
+#
+# Set to 0 to disable.
+#
+# environment keys: "PS_WATCH_DEBOUNCE_MS"
+#
+# watchDebounceMs = "500ms"
+
+
+# +------------------------+
+# |  writeVolumeUuidFiles  |
+# +------------------------+
+#
+# When true, PhotoStructure (tries to) write ".uuid" files into the root
+# directory of volumes, which enables cross-host library portability. Set this
+# to false if you don't want PhotoStructure to try to write these ".uuid"
+# files. See https://photostructure.com/faq/what-is-a-volume for more
+# information.
+#
+# environment keys: "PS_WRITE_VOLUME_UUID_FILES"
+#
+# writeVolumeUuidFiles = true
+
+
+# +--------------------------------------+
+# |  writeVolumeUuidMountpointBlocklist  |
+# +--------------------------------------+
+#
+# Never try to write a .uuid file to these directories.
+#
+# environment keys: "PS_WRITE_VOLUME_UUID_MOUNTPOINT_BLOCKLIST"
+#
+# writeVolumeUuidMountpointBlocklist = [
+#   "sshfs",
+#   "s3fs"
+# ]
+
+
+
+##############################################################################
+#
+# Settings for System.logging:
+#
+
+
+# +------------+
+# |  logColor  |
+# +------------+
+#
+# Output all logs with terminal escape codes to colorize output. If NO_COLOR
+# is set, or stdout is not a TTY, this defaults to false. See
+# <https://no-color.org/>.
+#
+# environment keys: "PS_LOG_COLOR"
+#
+# logColor = true
+
+
+# +------------------+
+# |  logCompression  |
+# +------------------+
+#
+# Should log files be compressed as they are rotated?
+#
+# environment keys: "PS_LOG_COMPRESSION"
+#
+# logCompression = true
+
+
+# +-------------------+
+# |  logContextLimit  |
+# +-------------------+
+#
+# PhotoStructure will only log, at most, this number of elements or key/value
+# pairs.
+#
+# environment keys: "PS_LOG_CONTEXT_LIMIT"
+#
+# logContextLimit = 64
+
+
+# +----------+
+# |  logDir  |
+# +----------+
+#
+# Determines the directory that log files will be written to.
+#
+# environment keys: "PS_LOG_DIR"
+#
+# logDir = "/ps/logs"
+
+
+# +------------+
+# |  logLevel  |
+# +------------+
+#
+# Determines which level of log messages are emitted to log files. May be
+# "debug", "info", "warn", "error", "fatal", or several log level directives
+# followed by a context (like "debug:web").
+#
+# environment keys: "PS_LOG_LEVEL", "PS_LOG", "LOG" or "LOG_LEVEL"
+#
+# logLevel = "warn"
+
+
+# +-------------+
+# |  logServer  |
+# +-------------+
+#
+# Format as hostname:port or ip_address:port.
+#
+# If set, processes will emit log entries, formatted as GELF and separated by
+# null bytes, via TCP.
+#
+# If this is set, the default PS_LOG_LEVEL drops from "error" to "info".
+#
+# See <https://docs.graylog.org/v1/docs/gelf>.
+#
+# environment keys: "PS_LOG_SERVER"
+#
+# logServer = "localhost:12201"
+
+
+# +------------------+
+# |  logServerLevel  |
+# +------------------+
+#
+# If set, this will be the log level used to filter logs before sending them
+# to "logServer".
+#
+# environment keys: "PS_LOG_SERVER_LEVEL"
+#
+# logServerLevel = "info"
+
+
+# +----------+
+# |  logSql  |
+# +----------+
+#
+# Log SQL queries to the default log level. **Enabling this negatively impacts
+# performance.**.
+#
+# This defaults to false.
+#
+# environment keys: "PS_LOG_SQL"
+#
+# logSql = false
+
+
+# +-------------+
+# |  logWebDir  |
+# +-------------+
+#
+# Determines the directory that log files will be written to. If unset, will
+# use logDir.
+#
+# environment keys: "PS_LOG_WEB_DIR"
+#
+# logWebDir = undefined
+
+
+# +------------------+
+# |  logWebRequests  |
+# +------------------+
+#
+# Write an access log for all web requests?
+#
+# environment keys: "PS_LOG_WEB_REQUESTS"
+#
+# logWebRequests = false
+
+
+# +---------+
+# |  quiet  |
+# +---------+
+#
+# If true, the main service won't emit lifecycle messages to stdout. Note that
+# logStdout=true or logTail=true will override quiet=true.
+#
+# environment keys: "PS_QUIET"
+#
+# quiet = false
+
+
+
+##############################################################################
+#
+# Settings for System.networking:
+#
+
+
+# +------------+
+# |  hostname  |
+# +------------+
+#
+# If set, this overrides the local hostname. Useful under docker and when OSes
+# change hostnames due to networking bugs (see macOS).
+#
+# environment keys: "PS_HOSTNAME"
+#
+# hostname = undefined
+
+
+# +------------+
+# |  httpPort  |
+# +------------+
+#
+# Network port for HTTP access to your PhotoStructure library.
+#
+# environment keys: "PS_HTTP_PORT"
+#
+# httpPort = 1787
+
+
+# +-------------+
+# |  localhost  |
+# +-------------+
+#
+# If "exposeNetworkWithoutAuth" is false, what value should PhotoStructure use
+# for localhost? (Some firewalls are OK with "127.0.0.1", some require
+# "localhost"). See <https://letsencrypt.org/docs/certificates-for-localhost/>
+# and
+# <https://photostructure.com/faq/troubleshooting/#windows-firewall-issues>.
+#
+# environment keys: "PS_LOCALHOST"
+#
+# localhost = "127.0.0.1"
+
+
+
+##############################################################################
+#
+# Settings for System.processes:
+#
+
+
+# +--------------------+
+# |  commandTimeoutMs  |
+# +--------------------+
+#
+# How long should PhotoStructure wait for a command that touches the
+# filesystem (and doesn't do anything computationally expensive)? Note that
+# external hard drives can take 10-15 seconds to spin up, and antivirus apps
+# can hang for tens of seconds on slow machines, so values less than the
+# default may result in undesired timeouts.
+#
+# environment keys: "PS_COMMAND_TIMEOUT_MS"
+#
+# commandTimeoutMs = "25s"
+
+
+# +------------------+
+# |  cpuLoadPercent  |
+# +------------------+
+#
+# This setting is a rough goal for PhotoStructure to load the system during
+# library synchronization. A higher value here will allow PhotoStructure to
+# run more tasks in parallel, but may impact your system's responsiveness.
+# Setting this value to 0 will still allow 1 import to run.
+#
+# This setting is ignored if "maxConcurrentImports" and
+# "sharpThreadsPerProcess" are set.
+#
+# environment keys: "PS_CPU_LOAD_PERCENT"
+# minValue: 0
+# maxValue: 200
+#
+# cpuLoadPercent = 75
+
+
+# +-----------------+
+# |  debugTimeouts  |
+# +-----------------+
+#
+# Should PhotoStructure log timeout sources? Note that this instrumentation
+# has a performance impact.
+#
+# environment keys: "PS_DEBUG_TIMEOUTS"
+#
+# debugTimeouts = false
+
+
+# +-------------------------+
+# |  exiftoolProcsPerChild  |
+# +-------------------------+
+#
+# Each PhotoStructure process spins up an ExifTool when needed. Note that the
+# "web" and "sync" services use exiftool, so the total number of exiftool
+# processes will be several times larger than this value. If this is unset,
+# this will default to roughly 50% of the number of supported concurrent
+# imports.
+#
+# environment keys: "PS_EXIFTOOL_PROCS_PER_CHILD"
+#
+# exiftoolProcsPerChild = undefined
+
+
+# +---------------------------+
+# |  fatalErrorRatePerMinute  |
+# +---------------------------+
+#
+# If PhotoStructure sees errors at a higher rate per minute than this setting,
+# PhotoStructure will shut down. If this value is too high, PhotoStructure may
+# look busy, but it's just busy failing. If this value is set too low,
+# temporary errors (due to network flakiness or USB hiccups) might shut down
+# PhotoStructure needlessly.
+#
+# environment keys: "PS_FATAL_ERROR_RATE_PER_MINUTE"
+#
+# fatalErrorRatePerMinute = 20
+
+
+# +-----------------+
+# |  ffmpegThreads  |
+# +-----------------+
+#
+# When transcoding videos, what value should we give to "ffmpeg -threads"?
+#
+# This defaults to min(1, <# of cpus> * cpuLoadPercent / 4).
+#
+# Note that "ffmpeg -threads" _most likely doesn't do what you expect_: a
+# value of 0 will consume all CPUs (which is why it isn't allowed). A value of
+# N will actually mean > N CPUs are used (due to demux threading and other
+# details). See <https://stackoverflow.com/a/41010102>.
+#
+# environment keys: "PS_FFMPEG_THREADS"
+#
+# ffmpegThreads = undefined
+
+
+# +------------------------+
+# |  maxConcurrentImports  |
+# +------------------------+
+#
+# How many imports can PhotoStructure schedule concurrently? This will be
+# clamped between 1 and 32.
+#
+# If not set, a sensible value will be computed based on "cpuLoadPercent".
+#
+# If set explicitly, this and "sharpThreadsPerProcess" will override
+# "cpuLoadPercent" and "maxConcurrentImportsWhenRemote" settings.
+#
+# aliases: "maxSyncFileJobs"
+# environment keys: "PS_MAX_CONCURRENT_IMPORTS" or "PS_MAX_SYNC_FILE_JOBS"
+#
+# maxConcurrentImports = undefined
+
+
+# +----------------------------------+
+# |  maxConcurrentImportsWhenRemote  |
+# +----------------------------------+
+#
+# How many concurrent files can be imported if the library is on a remote
+# volume? This defaults to 2 to try to avoid overwhelming HDD I/O on the
+# remote NAS. If this is larger than (cpus.length * cpuLoadPercent) or max
+# child processes given available memory, this value will be ignored.
+#
+# aliases: "maxSyncFileJobsWhenRemote"
+# environment keys: "PS_MAX_CONCURRENT_IMPORTS_WHEN_REMOTE" or
+# "PS_MAX_SYNC_FILE_JOBS_WHEN_REMOTE"
+#
+# maxConcurrentImportsWhenRemote = 2
+
+
+# +---------------+
+# |  maxMemoryMb  |
+# +---------------+
+#
+# PhotoStructure will restart services if they use more than this value
+# (measured in megabytes, or 1,000,000 bytes). Note that this is not the
+# allocated memory. See maxRssMemoryMb for total allocated.
+#
+# environment keys: "PS_MAX_MEMORY_MB"
+# minValue: 256
+# maxValue: 8000
+#
+# maxMemoryMb = 500
+
+
+# +--------------+
+# |  maxRetries  |
+# +--------------+
+#
+# If a task has an error, how many times should we retry before giving up?
+#
+# If you have a flaky network, this can help ensure imports are comprehensive.
+#
+# Set this to 0 to disable retries.
+#
+# environment keys: "PS_MAX_RETRIES"
+#
+# maxRetries = 1
+
+
+# +------------------+
+# |  maxRssMemoryMb  |
+# +------------------+
+#
+# PhotoStructure will restart services if their resident set size consumes
+# more than this value (measured in megabytes, or 1,000,000 bytes).
+#
+# environment keys: "PS_MAX_RSS_MEMORY_MB"
+# minValue: 256
+# maxValue: 8000
+#
+# maxRssMemoryMb = 1024
+
+
+# +----------------------+
+# |  maxTasksPerProcess  |
+# +----------------------+
+#
+# PhotoStructure will recycle threads and worker processes after they handle
+# this number of requests. Smaller values may reduce overall memory pressure.
+# Larger values amortize startup costs over fewer restarts.
+#
+# environment keys: "PS_MAX_TASKS_PER_PROCESS"
+# minValue: 1
+# maxValue: 5000
+#
+# maxTasksPerProcess = 500
+
+
+# +----------------------------+
+# |  minDelayBetweenRetriesMs  |
+# +----------------------------+
+#
+# If a task has an error, should we wait a bit before retrying? This may help
+# temper error cascades.
+#
+# aliases: "minDelayBetweenSpawnMillis"
+# environment keys: "PS_MIN_DELAY_BETWEEN_RETRIES_MS" or
+# "PS_MIN_DELAY_BETWEEN_SPAWN_MILLIS"
+#
+# minDelayBetweenRetriesMs = "250ms"
+
+
+# +--------------------------+
+# |  minDelayBetweenSpawnMs  |
+# +--------------------------+
+#
+# The shorter this time is, the faster PhotoStructure will ramp up parallelism
+# at the start of a sync. Having a larger value here mitigates initial system
+# load from forking. See
+# <https://photostructure.github.io/batch-cluster.js/classes/BatchClusterOptions.html#minDelayBetweenSpawnMillis>.
+#
+# aliases: "minDelayBetweenSpawnMillis"
+# environment keys: "PS_MIN_DELAY_BETWEEN_SPAWN_MS" or
+# "PS_MIN_DELAY_BETWEEN_SPAWN_MILLIS"
+#
+# minDelayBetweenSpawnMs = "1500"
+
+
+# +-----------------+
+# |  minDiskFreeGb  |
+# +-----------------+
+#
+# PhotoStructure will pause processing if the GB free on the disk that your
+# library is stored on drops below this value. The value provided here will be
+# multiplied by 1000^3. Note that many OSes will corrupt themselves when disks
+# fill up, and SSDs can fail as they approach full capacity. A value of less
+# than 8 may be unsafe (due to hibernation and OS update files).
+#
+# Set this value to 0 to disable free disk space health checks.
+#
+# environment keys: "PS_MIN_DISK_FREE_GB"
+#
+# minDiskFreeGb = 6
+
+
+# +-----------------------------------+
+# |  minTimeBetweenServiceRestartsMs  |
+# +-----------------------------------+
+#
+# If a service (like web or sync) is restarted due to an error, how many
+# milliseconds must elapse before another restart is allowed? This helps
+# prevent system load due to service flapping.
+#
+# environment keys: "PS_MIN_TIME_BETWEEN_SERVICE_RESTARTS_MS"
+#
+# minTimeBetweenServiceRestartsMs = "7s"
+
+
+# +------------------+
+# |  pollIntervalMs  |
+# +------------------+
+#
+# The number of milliseconds we wait between polling for changes in remote
+# filesystems. This defaults to 1 minute, to minimize remote filesystem load.
+#
+# environment keys: "PS_POLL_INTERVAL_MS"
+#
+# pollIntervalMs = "1m"
+
+
+# +---------------+
+# |  probationMs  |
+# +---------------+
+#
+# Normally when subsystems crash, PhotoStructure restarts them after a delay.
+# Unfortunately, if there is a persistent error, this means PhotoStructure
+# keeps trying something that won't ever work; it looks busy, but it's just
+# busy failing. To prevent this situation, PhotoStructure will shut down if
+# there are high error rates within 2 minutes of starting. (2 minutes should
+# be long enough to spin up the web process, sync process, and import at least
+# one pending file). Setting this to 0 will prevent PhotoStructure from
+# exiting due to high error rates.
+#
+# environment keys: "PS_PROBATION_MS"
+#
+# probationMs = "2m"
+
+
+# +-------------------+
+# |  processPriority  |
+# +-------------------+
+#
+# By default, PhotoStructure runs child processes with a "below normal"
+# priority, so your system remains usable while imports run. Changing this
+# value to "normal" or "above normal" may speed up imports but cause your
+# system to be unresponsive. Changing this value to "idle" may prevent imports
+# from running at all.
+#
+# For Linux and macOS systems, see
+# <https://en.wikipedia.org/wiki/Nice_%28Unix%29>.
+#
+# For Windows, see
+# <https://docs.microsoft.com/en-us/dotnet/api/system.diagnostics.processpriorityclass?view=netframework-4.8>.
+#
+# environment keys: "PS_PROCESS_PRIORITY"
+# validValues: "AboveNormal", "Normal", "BelowNormal" or "Idle"
+#
+# processPriority = "BelowNormal"
+
+
+# +----------------------+
+# |  sensitiveEnvRegExp  |
+# +----------------------+
+#
+# PhotoStructure spawns several external processes, including "exiftool" and
+# "ffmpeg".
+#
+# PhotoStructure filters out environment keys  that are likely to contain
+# sensitive information (like API access tokens or passwords) from these child
+# processes so they aren't accidentally logged or accessible by external
+# tools.
+#
+# This regex is applied case-insensitively.
+#
+# environment keys: "PS_SENSITIVE_ENV_REG_EXP"
+#
+# sensitiveEnvRegExp = "key(?!word)|aws_|npm_|pass|private|secret|token"
+
+
+# +------------------+
+# |  setupTimeoutMs  |
+# +------------------+
+#
+# To prevent unhealthy services from running as zombies, they self-terminate
+# if the setup processes are not complete within this amount of time. Note
+# that only the environment variable value is used for this setting.
+#
+# environment keys: "PS_SETUP_TIMEOUT_MS"
+#
+# setupTimeoutMs = "35s"
+
+
+# +--------------------------+
+# |  sharpThreadsPerProcess  |
+# +--------------------------+
+#
+# How many image processing threads can be spun per process?
+#
+# If set to 0 (the default), PhotoStructure will pick an optimal value based
+# on available memory and CPU cores.
+#
+# aliases: "sharpThreadsPerJob"
+# environment keys: "PS_SHARP_THREADS_PER_PROCESS" or
+# "PS_SHARP_THREADS_PER_JOB"
+# minValue: 0
+# maxValue: 8
+#
+# sharpThreadsPerProcess = 0
+
+
+# +-----------------+
+# |  streamFlushMs  |
+# +-----------------+
+#
+# See
+# <https://photostructure.github.io/batch-cluster.js/classes/BatchClusterOptions.html#streamFlushMillis>.
+#
+# aliases: "streamFlushMillis"
+# environment keys: "PS_STREAM_FLUSH_MS" or "PS_STREAM_FLUSH_MILLIS"
+#
+# streamFlushMs = "30ms"
+
+
+# +---------------------+
+# |  syncExitTimeoutMs  |
+# +---------------------+
+#
+# Wait at most this time for sync to shut down cleanly. This needs to be long
+# enough to possibly copy the library database back to the remote filesystem
+# if your library is stored on a network drive.
+#
+# environment keys: "PS_SYNC_EXIT_TIMEOUT_MS"
+#
+# syncExitTimeoutMs = "90s"
+
+
+# +------------------------+
+# |  timeoutThrottleCoeff  |
+# +------------------------+
+#
+# When timeouts are detected, PhotoStructure throttles back concurrency
+# automatically, with the assumption that some system is currently being
+# overwhelmed and that less load should result in fewer failures due to
+# timeouts.
+#
+# Specifically, concurrency will be set to 1 / current rate of timeouts per
+# minute over the past several minutes.
+#
+# Throttling will be more aggressive as this value approaches 0. For example a
+# value of 0.1 will be very aggressive throttling. A value of 8 will only slow
+# down sync after many soft timeouts.
+#
+# Disable throttling by setting to 0.
+#
+# environment keys: "PS_TIMEOUT_THROTTLE_COEFF"
+#
+# timeoutThrottleCoeff = 1
+
+
+
+##############################################################################
+#
+# Settings for System.security:
+#
+
+
+# +----------------+
+# |  cspDirective  |
+# +----------------+
+#
+# If you're seeing CSP errors with older browsers, add your
+# externally-available base URL to this setting, and it will be appended to
+# the CSP directives. See
+# <https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/script-src>.
+#
+# environment keys: "PS_CSP_DIRECTIVE"
+#
+# cspDirective = "https://myphotos.example.com"
+
+
+# +-----------------+
+# |  cspReportOnly  |
+# +-----------------+
+#
+# DANGEROUS: do not enforce, and only report CSP violations. This should only
+# be set to true temporarily to assist in debugging. See
+# <https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP>.
+#
+# environment keys: "PS_CSP_REPORT_ONLY"
+#
+# cspReportOnly = false
+
+
+# +----------------------------+
+# |  disabledHelmetMiddleware  |
+# +----------------------------+
+#
+# What Helmet middleware should PhotoStructure disable?
+#
+# By default, PhotoStructure enables all middleware, but if your reverse proxy
+# is handling HTTP headers, you may want to remove some of Helmet's
+# functionality.
+#
+# Disable all middleware by using the value "all", but know that CSP
+# management is handled by the "cspDirective" and "cspReportOnly" settings.
+#
+# See <https://github.com/helmetjs/helmet#reference>.
+#
+# environment keys: "PS_DISABLED_HELMET_MIDDLEWARE"
+# validValues: "all", "contentSecurityPolicy", "crossOriginEmbedderPolicy",
+# "crossOriginOpenerPolicy", "crossOriginResourcePolicy",
+# "dnsPrefetchControl", "expectCt", "frameguard", "hidePoweredBy", "hsts",
+# "ieNoOpen", "noSniff", "originAgentCluster", "permittedCrossDomainPolicies",
+# "referrerPolicy" or "xssFilter"
+#
+# disabledHelmetMiddleware = []
+
+
+# +----------------------------+
+# |  exposeNetworkWithoutAuth  |
+# +----------------------------+
+#
+# Normally the web service is only accessible to the computer running
+# PhotoStructure. Setting this to true will expose your library to all
+# computers on your network. You should own or trust all systems on that
+# network, as there is no auth in PhotoStructure currently. Future versions of
+# PhotoStructure will add authorization mechanisms, at which point this
+# setting will be deleted.
+#
+# **Don't enable this unless you know what you are doing**.
+#
+# environment keys: "PS_EXPOSE_NETWORK_WITHOUT_AUTH"
+#
+# exposeNetworkWithoutAuth = true
+
+
+# +--------------+
+# |  trustProxy  |
+# +--------------+
+#
+# What reverse proxies should PhotoStructure "trust"? See
+# <http://expressjs.com/en/guide/behind-proxies.html>.
+#
+# This setting should either be "false" (don't trust any proxies), "loopback",
+# (only trust loopback/localhost), a single subnet (like "192.168.1.0/24"), or
+# a comma-delimited set of subnets.
+#
+# environment keys: "PS_TRUST_PROXY"
+#
+# trustProxy = "loopback"
+
+
+# +---------------------------+
+# |  upgradeInsecureRequests  |
+# +---------------------------+
+#
+# May PhotoStructure send the Upgrade-Insecure-Requests header? PhotoStructure
+# will set the default to true automatically if it sees _any_ request is via
+# https.
+#
+# Set this explicitly to false if you access PhotoStructure via both http
+# (inside your LAN) and https (outside your LAN).
+#
+# environment keys: "PS_UPGRADE_INSECURE_REQUESTS"
+#
+# upgradeInsecureRequests = false
+
+
+
+##############################################################################
+#
+# Settings for System.tools:
+#
+
+
+# +-----------------+
+# |  dcraw_emuPath  |
+# +-----------------+
+#
+# This should be the absolute, native path to the "dcraw_emu" binary on this
+# system. If this is set to "dcraw_emu", PhotoStructure will search your
+# $PATH. See <https://www.libraw.org/docs/Samples-LibRaw.html>.
+#
+# environment keys: "PS_DCRAW_EMU_PATH"
+#
+# dcraw_emuPath = "dcraw_emu"
+
+
+# +--------------+
+# |  enableSIMD  |
+# +--------------+
+#
+# Should PhotoStructure enable SIMD extensions when running image operations?
+# This defaults to false on macOS and Raspberry Pis due to instability on
+# those platforms.
+#
+# environment keys: "PS_ENABLE_SIMD" or "PS_ENABLE__SIMD"
+#
+# enableSIMD = true
+
+
+# +-------------------+
+# |  enableVipsCache  |
+# +-------------------+
+#
+# Should PhotoStructure enable VIPS caching, which may help speed up image
+# operations?
+#
+# environment keys: "PS_ENABLE_VIPS_CACHE"
+#
+# enableVipsCache = true
+
+
+# +--------------------------+
+# |  ffmpegAvcTranscodeArgs  |
+# +--------------------------+
+#
+# The following are the default arguments added to transcode requests made to
+# ffmpeg, when ffmpeg is available. The following arguments will follow
+# "ffmpeg -loglevel error -threads T -i INPUT_FILE_PATH" (where T is replaced
+# by ~half the available CPU threads, and INPUT_FILE_PATH is the full native
+# pathname to the source video).
+#
+# If your videos are in high colorspace like bt2020, you may want to remove
+# the "-vf" and "colorspace=all=bt2020:iall=bt601-6-625:fast=1" options, but
+# this may cause rendering issues on SDR displays. See
+# <https://forum.photostructure.com/t/1003/3> for more details.
+#
+# CAUTION: this is an advanced setting. Invalid values may cause videos that
+# require transcoding to not be imported, or not be viewable on some browsers.
+#
+# aliases: "ffmpegTranscodeArgs"
+# environment keys: "PS_FFMPEG_AVC_TRANSCODE_ARGS" or
+# "PS_FFMPEG_TRANSCODE_ARGS"
+#
+# ffmpegAvcTranscodeArgs = [
+#   "-c:a",
+#   "aac",
+#   "-c:v",
+#   "libx264",
+#   "-pix_fmt",
+#   "yuv420p",
+#   "-vf",
+#   "colorspace=all=bt709:iall=bt601-6-625:fast=1",
+#   "-colorspace",
+#   "bt709",
+#   "-movflags",
+#   "+faststart"
+# ]
+
+
+# +-----------------+
+# |  ffmpegHwaccel  |
+# +-----------------+
+#
+# FFmpeg supports both software and hardware encoders. Valid values include
+# "auto" which should work for everyone, "cuda" for NVIDIA GPUs, or use
+# "disable", "no", "false", or "" to disable. Run "ffmpeg -hwaccels" to see
+# supported acceleration methods. See
+# <https://forum.photostructure.com/t/hardware-accelerated-encoding-transcoding/166>,
+# <https://trac.ffmpeg.org/wiki/HWAccelIntro>, and
+# <https://github.com/NVIDIA/nvidia-docker> for more details.
+#
+# environment keys: "PS_FFMPEG_HWACCEL"
+#
+# ffmpegHwaccel = "disable"
+
+
+# +--------------+
+# |  ffmpegPath  |
+# +--------------+
+#
+# This should be the absolute, native path to the "ffmpeg" binary on this
+# system. If this is set to "ffmpeg", PhotoStructure will search your $PATH.
+# PhotoStructure prefers using ffmpeg to vlc. See
+# <https://photostructure.com/getting-started/video-support/>.
+#
+# environment keys: "PS_FFMPEG_PATH"
+#
+# ffmpegPath = "ffmpeg"
+
+
+# +-------------------+
+# |  heifConvertPath  |
+# +-------------------+
+#
+# This should be the absolute, native path to the "heif-convert" binary on
+# this system. If this is set to "heif-convert", PhotoStructure will search
+# your $PATH. See <https://photostructure.com/getting-started/heif-support/>.
+#
+# environment keys: "PS_HEIF_CONVERT_PATH"
+#
+# heifConvertPath = "heif-convert"
+
+
+# +------------------+
+# |  powerShellArgs  |
+# +------------------+
+#
+# The following are the default arguments added to spin up PowerShell on
+# Windows devices.
+#
+# See
+# <https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_powershell_exe?view=powershell-5.1>
+# for all arguments that PowerShell.exe accepts.
+#
+# See
+# <https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_execution_policies?view=powershell-5.1>
+# for a description of Bypass.
+#
+# See
+# <https://forum.photostructure.com/t/eliminate-powershell-profile-and-execution-policy-related-errors/184>
+# for more details about why this needs to be configurable.
+#
+# (Versions prior to v1.0.0 only specified "-NoLogo").
+#
+# environment keys: "PS_POWER_SHELL_ARGS"
+#
+# powerShellArgs = [
+#   "-NoLogo",
+#   "-NoProfile",
+#   "-ExecutionPolicy",
+#   "Bypass"
+# ]
+
+
+# +---------------------+
+# |  powerShellCulture  |
+# +---------------------+
+#
+# If set to a non-blank value, PhotoStructure on Windows machines will set
+# PowerShell's `[System.Threading.Thread]::CurrentThread.CurrentCulture` to
+# this value. This allows PhotoStructure to parse PowerShell output reliably.
+#
+# environment keys: "PS_POWER_SHELL_CULTURE"
+#
+# powerShellCulture = "en-US"
+
+
+# +---------------------------+
+# |  showFileInFolderCommand  |
+# +---------------------------+
+#
+# If set, the first argument will be used as a command (or path to command),
+# and the subsequent arguments (if present) will be used as arguments. The
+# native path to the file or the file: URI will be appended, based on the
+# value given to the "showFileInFolderUsesFileUri" setting. If this is set to
+# an empty array, the default tool for your platform will be used instead:
+# "nautilus -s" on linux, "open -R" on mac, and "explorer /select" on Windows.
+#
+# This is provided to support Linux desktops that don't use Gnome.
+#
+# environment keys: "PS_SHOW_FILE_IN_FOLDER_COMMAND"
+#
+# showFileInFolderCommand = []
+
+
+# +-------------------------------+
+# |  showFileInFolderUsesFileUri  |
+# +-------------------------------+
+#
+# Does the showFileInFolderCommand expect a file: URI to the file? If this is
+# false, the native path will be appended instead.
+#
+# environment keys: "PS_SHOW_FILE_IN_FOLDER_USES_FILE_URI"
+#
+# showFileInFolderUsesFileUri = true
+
+
+# +------------------------------+
+# |  showFileInFolderUsesThunar  |
+# +------------------------------+
+#
+# If we're on Linux, should we use Thunar (via dbus) to "show file in folder"?
+#
+# environment keys: "PS_SHOW_FILE_IN_FOLDER_USES_THUNAR"
+#
+# showFileInFolderUsesThunar = false
+
+
+# +-------------+
+# |  toolPaths  |
+# +-------------+
+#
+# These paths are appended to the PATH to ensure PhotoStructure can find and
+# run external tools like ffmpeg. Use your operating system's separator to
+# separate paths (":" for mac and linux, ";" for windows).
+#
+# environment keys: "PS_TOOL_PATHS"
+#
+# toolPaths = [
+#   "/ps/app/tools/bin",
+#   "/usr/local/bin",
+#   "/usr/local/sbin",
+#   "/usr/lib/libraw",
+#   "/opt/local/bin",
+#   "/opt/local/sbin",
+#   "/usr/sbin",
+#   "/usr/bin",
+#   "/sbin",
+#   "/bin"
+# ]
+
+
+# +-----------+
+# |  vlcPath  |
+# +-----------+
+#
+# This should be the absolute, native path to the "vlc" binary on this system.
+# If this is set to "vlc", PhotoStructure will search your $PATH.
+#
+# environment keys: "PS_VLC_PATH"
+#
+# vlcPath = "vlc"
+
+
+
