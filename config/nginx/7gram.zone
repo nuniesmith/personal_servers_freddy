@@ -55,8 +55,4 @@ sync-sullivan               IN    A     100.121.199.80
 sync-desktop                IN    A     100.121.199.80
 sync-oryx                   IN    A     100.121.199.80
 
-; Portainer instances
-portainer-freddy            IN    A     100.121.199.80
-portainer-sullivan          IN    A     100.121.199.80
-
 ; End of zone file

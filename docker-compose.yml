@@ -1,3 +1,5 @@
+version: '3'
+
 # Docker Compose for FREDDY - HTTPS & Authelia Optimized with SSL Certificate Generation
 # Low power server handling core services: reverse proxy, auth, DNS, home automation
 
@@ -16,62 +18,101 @@ networks:
 
 volumes:
   # System volumes
-  pihole_data:
-  pihole_dnsmasq_data:
   homeassistant_data:
   syncthing_data:
 
   # Monitoring and Management
   portainer_data:
 
+  # Database volumes
+  postgres_data:
+
+  # Nextcloud volumes
+  nextcloud_config:
+  nextcloud_data:
+
+  # Authelia and dependencies
+  authelia_config:
+  redis_data:
+
+  # SWAG (Nginx with Certbot)
+  swag_config:
+
 services:
   # =============================================================================
-  # SYSTEM SERVICES
+  # REVERSE PROXY AND AUTH SERVICES
   # =============================================================================
 
-  # pihole - network-wide ad blocking DNS server
-  pihole:
-    image: pihole/pihole:latest
-    container_name: pihole
-    environment:
-      - TZ=${TZ:-America/Toronto}
-      - WEBPASSWORD=${PIHOLE_PASSWORD:-changeme}
-      - FTLCONF_LOCAL_IPV4=${PIHOLE_SERVER_IP:-192.168.1.100}
-      - PIHOLE_DNS_=${PIHOLE_DNS:-8.8.8.8;8.8.4.4}
-      - DNSMASQ_LISTENING=all
-      - WEBTHEME=${PIHOLE_THEME:-default-dark}
-      - VIRTUAL_HOST=${PIHOLE_VIRTUAL_HOST:-pihole.local}
-      - PROXY_LOCATION=pihole
-      - FTLCONF_REPLY_ADDR4=${PIHOLE_SERVER_IP:-192.168.1.100}
-    volumes:
-      # CONFIG: Git-managed configuration (if any)
-      - ./config/pihole:/etc/pihole
-      # DATA: Application data
-      - pihole_data:/etc/pihole
-      - pihole_dnsmasq_data:/etc/dnsmasq.d
-    ports:
-      - "53:53/tcp"     # DNS TCP
-      - "53:53/udp"     # DNS UDP
-      - "8080:80/tcp"   # Web interface (changed from 80 to avoid nginx conflict)
-      # Note: 443 removed - nginx handles HTTPS termination
-    restart: unless-stopped
-    networks:
-      frontend:
-        ipv4_address: 172.30.0.10
-      backend:
+  # swag - nginx reverse proxy with built-in certbot for SSL
+  swag:
+    image: lscr.io/linuxserver/swag:latest
+    container_name: swag
     cap_add:
       - NET_ADMIN
-    dns:
-      - 127.0.0.1
-      - 8.8.8.8
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/Toronto}
+      - URL=${DOMAIN:-example.com}  # Replace with your domain
+      - SUBDOMAINS=wildcard  # Or list subdomains: nextcloud,photos,portainer,syncthing
+      - VALIDATION=http  # Change to 'dns' if using DNS validation
+      - EMAIL=${EMAIL:-your@email.com}  # For cert notifications
+      - ONLY_SUBDOMAINS=false
+      - STAGING=false  # Set to true for testing
+    volumes:
+      - swag_config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: unless-stopped
+    networks:
+      - frontend
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  # redis - required for authelia sessions
+  redis:
+    image: redis:alpine
+    container_name: redis
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - backend
     healthcheck:
-      test: ["CMD", "dig", "@127.0.0.1", "google.com", "||", "exit", "1"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 30s
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
+
+  # authelia - authentication server
+  authelia:
+    image: authelia/authelia:latest
+    container_name: authelia
+    depends_on:
+      - redis
+    volumes:
+      - authelia_config:/config
+    environment:
+      - TZ=${TZ:-America/Toronto}
+    restart: unless-stopped
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "wget -O- --quiet --tries=1 http://localhost:9091/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  # =============================================================================
+  # SYSTEM SERVICES
+  # =============================================================================
 
   # home assistant (requires host network for device discovery)
   homeassistant:
@@ -117,7 +158,7 @@ services:
       # SYNC: Directories to sync
       - ${SYNCTHING_DATA_PATH:-/home/syncthing}:/sync
     ports:
-      - "8384:8384"  # Web UI
+      - "8384:8384"  # Web UI (can be removed if proxied via swag)
       - "22000:22000/tcp"  # File transfer
       - "22000:22000/udp"  # File transfer
       - "21027:21027/udp"  # Discovery
@@ -176,7 +217,7 @@ services:
       # DATA: Application data
       - portainer_data:/data
     ports:
-      - "9000:9000"   # HTTP interface
+      - "9000:9000"   # HTTP interface (can be removed if proxied via swag)
       - "9443:9443"   # HTTPS interface (if SSL enabled)
     restart: unless-stopped
     networks:
@@ -190,5 +231,101 @@ services:
     # Security enhancements
     security_opt:
       - no-new-privileges:true
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  # =============================================================================
+  # DATABASE SERVICES
+  # =============================================================================
+
+  # postgres - database for nextcloud
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    environment:
+      - POSTGRES_DB=${NEXTCLOUD_DB_NAME:-nextcloud}
+      - POSTGRES_USER=${NEXTCLOUD_DB_USER:-nextcloud}
+      - POSTGRES_PASSWORD=${NEXTCLOUD_DB_PASSWORD:-changeme}
+      - TZ=${TZ:-America/Toronto}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${NEXTCLOUD_DB_USER:-nextcloud}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  # =============================================================================
+  # PHOTO MANAGEMENT
+  # =============================================================================
+
+  # photostructure - photo management app (switched to bind mounts for better permission control)
+  photostructure:
+    image: photostructure/server:latest  # Consider :alpha for v2+ with simpler setup
+    container_name: photostructure
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/Toronto}
+    volumes:
+      - ./config/photostructure/library:/ps/library
+      - ./config/photostructure/config:/ps/config
+      - ./config/photostructure/cache:/ps/tmp
+      - ./config/photostructure/logs:/ps/logs
+      - ${PHOTOS_PATH:-/mnt/1tb/photos}:/photos  # Mount your photo directory here
+    # ports:  # Remove ports as swag will proxy
+    #   - "1787:1787"
+    restart: unless-stopped
+    stop_grace_period: 2m
+    networks:
+      - frontend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1787/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  # =============================================================================
+  # CLOUD STORAGE
+  # =============================================================================
+
+  # nextcloud - file sharing with postgres db
+  nextcloud:
+    image: lscr.io/linuxserver/nextcloud:latest
+    container_name: nextcloud
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/Toronto}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=${NEXTCLOUD_DB_NAME:-nextcloud}
+      - POSTGRES_USER=${NEXTCLOUD_DB_USER:-nextcloud}
+      - POSTGRES_PASSWORD=${NEXTCLOUD_DB_PASSWORD:-changeme}
+    volumes:
+      - nextcloud_config:/config
+      - /mnt/1tb/nextcloud/data:/data
+    # ports:  # Remove ports as swag will proxy
+    #   - "8443:443"
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    networks:
+      - frontend
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "https://localhost/status.php", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
