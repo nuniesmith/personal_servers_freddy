@@ -1,0 +1,38 @@
+services:
+  nginx:
+    image: lscr.io/linuxserver/nginx:latest
+    container_name: nginx
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/Toronto}
+    volumes:
+      - nginx_config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: unless-stopped
+    networks:
+      - backend
+    depends_on:
+      - nextcloud
+      - authelia
+      # Add photoprism if protecting it too
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  nginx_config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/nginx/config
+
+networks:
+  backend:
+    driver: bridge
+    external: true  # Since defined in other files, mark as external here
