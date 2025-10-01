@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 # FREDDY stack startup script
-# Modeled after FKS start script: env detection, prereq checks, .env bootstrap, pull/up, and quick health checks
+# Updated for modular services with separate compose and .env files
+# Handles multiple compose files, per-service env, dependency order
 
 set -euo pipefail
 
@@ -15,7 +16,10 @@ NC='\033[0m'
 # Paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
-ENV_FILE="$PROJECT_ROOT/.env"
+SERVICES_DIR="$PROJECT_ROOT/services"
+
+# List of services in dependency order (DB first)
+SERVICES=("db" "authelia" "nginx" "nextcloud" "photoprism" "homeassistant")
 
 COMPOSE_CMD=""
 
@@ -70,40 +74,253 @@ check_prerequisites() {
 	log INFO "Prerequisites OK"
 }
 
-create_env_file() {
-	log INFO "Creating .env for FREDDY..."
-	local tz ip puid pgid pihole_pw
+# Function to get compose file for a service
+get_compose_file() {
+    local service=$1
+    echo "$SERVICES_DIR/$service/docker-compose.yml"
+}
+
+# Function to get env file for a service
+get_env_file() {
+    local service=$1
+    echo "$SERVICES_DIR/$service/.env"
+}
+
+create_env_files() {
+	log INFO "Creating missing .env files for services..."
+
+	local tz ip puid pgid
 	tz="${TZ:-America/Toronto}"
 	ip=$(hostname -I 2>/dev/null | awk '{print $1}')
 	ip=${ip:-192.168.1.100}
-	puid=$(id -u)
-	pgid=$(id -g)
-	# Generate a random Pi-hole web password
-	if command -v openssl >/dev/null 2>&1; then
-		pihole_pw="pihole_$(openssl rand -hex 8)"
+	# Use original user's UID/GID even when running with sudo
+	if [[ -n "$SUDO_UID" && -n "$SUDO_GID" ]]; then
+		puid=$SUDO_UID
+		pgid=$SUDO_GID
 	else
-		pihole_pw="pihole_change_me"
+		puid=$(id -u)
+		pgid=$(id -g)
 	fi
 
-	cat > "$ENV_FILE" <<EOF
-# FREDDY environment
+	# Generate secure passwords once, share where needed
+	local postgres_pw nextcloud_db_pw photoprism_db_pw photoprism_admin_pw authelia_jwt authelia_session authelia_encryption authelia_admin_pw
+	if command -v openssl >/dev/null 2>&1; then
+		postgres_pw="$(openssl rand -hex 16)"
+		nextcloud_db_pw="$(openssl rand -hex 16)"
+		photoprism_db_pw="$(openssl rand -hex 16)"
+		photoprism_admin_pw="$(openssl rand -hex 16)"
+		authelia_jwt="$(openssl rand -hex 32)"
+		authelia_session="$(openssl rand -hex 32)"
+		authelia_encryption="$(openssl rand -hex 32)"
+		authelia_admin_pw="$(openssl rand -hex 16)"
+	else
+		postgres_pw="changeme"
+		nextcloud_db_pw="changeme"
+		photoprism_db_pw="changeme"
+		photoprism_admin_pw="pleasechange"
+		authelia_jwt="changeme"
+		authelia_session="changeme"
+		authelia_encryption="changeme"
+		authelia_admin_pw="changeme"
+		log WARN "openssl not found; using insecure defaults"
+	fi
+
+	# Database and user names (constants)
+	local NEXTCLOUD_DB_NAME="nextcloud"
+	local NEXTCLOUD_DB_USER="nextcloud"
+	local PHOTOPRISM_DB_USER="photoprism"
+
+	for service in "${SERVICES[@]}"; do
+		local env_file; env_file=$(get_env_file "$service")
+		if [[ -f "$env_file" ]]; then
+			log INFO "$service .env already exists"
+			continue
+		fi
+
+		# Common vars
+		cat > "$env_file" <<EOF
+# $service environment
 TZ=$tz
 
-# Pi-hole settings
-PIHOLE_PASSWORD=$pihole_pw
-PIHOLE_SERVER_IP=$ip
-PIHOLE_DNS=1.1.1.1;8.8.8.8
-PIHOLE_THEME=default-dark
-PIHOLE_VIRTUAL_HOST=pihole.local
-
-# UID/GID for linuxserver images
+# User/Group IDs
 PUID=$puid
 PGID=$pgid
 
-# Watchtower
-WATCHTOWER_SCHEDULE=0 2 * * *
+# Domain and SSL (for nginx/swag)
+DOMAIN=7gram.xyz
+EMAIL=nunie.smith01@gmail.com
+SUBDOMAINS=wildcard
+VALIDATION=http
+ONLY_SUBDOMAINS=false
+STAGING=false
+
+# Watchtower settings
+WATCHTOWER_SCHEDULE="0 2 * * *"
+WATCHTOWER_NOTIFICATIONS=
+WATCHTOWER_NOTIFICATION_URL=
+WATCHTOWER_MONITOR_ONLY=false
+
+# Photos path
+PHOTOS_PATH=/mnt/1tb/photos
 EOF
-	log INFO ".env created at $ENV_FILE"
+
+		# Service-specific vars
+		case "$service" in
+			db)
+				cat >> "$env_file" <<EOF
+
+# Postgres settings
+NEXTCLOUD_DB_NAME=$NEXTCLOUD_DB_NAME
+POSTGRES_USER=authelia
+POSTGRES_PASSWORD=$postgres_pw
+NEXTCLOUD_DB_USER=$NEXTCLOUD_DB_USER
+NEXTCLOUD_DB_PASSWORD=$nextcloud_db_pw
+PHOTOPRISM_DB_USER=$PHOTOPRISM_DB_USER
+PHOTOPRISM_DB_PASSWORD=$photoprism_db_pw
+EOF
+				;;
+			authelia)
+				cat >> "$env_file" <<EOF
+
+# Authelia secrets
+AUTHELIA_JWT_SECRET=$authelia_jwt
+AUTHELIA_SESSION_SECRET=$authelia_session
+AUTHELIA_STORAGE_ENCRYPTION_KEY=$authelia_encryption
+
+# Shared DB password for storage
+POSTGRES_PASSWORD=$postgres_pw
+
+# Authelia admin password (plain, for logging; hash in users_database.yml)
+AUTHELIA_ADMIN_PASSWORD=$authelia_admin_pw
+EOF
+				;;
+			nextcloud)
+				cat >> "$env_file" <<EOF
+
+# Shared DB settings
+POSTGRES_HOST=postgres
+POSTGRES_DB=$NEXTCLOUD_DB_NAME
+POSTGRES_USER=$NEXTCLOUD_DB_USER
+POSTGRES_PASSWORD=$nextcloud_db_pw
+EOF
+				;;
+			photoprism)
+				cat >> "$env_file" <<EOF
+
+# Photoprism admin password
+PHOTOPRISM_ADMIN_PASSWORD=$photoprism_admin_pw
+
+# Shared DB settings
+PHOTOPRISM_DATABASE_SERVER=postgres:5432
+PHOTOPRISM_DATABASE_NAME=photoprism
+PHOTOPRISM_DATABASE_USER=$PHOTOPRISM_DB_USER
+PHOTOPRISM_DATABASE_PASSWORD=$photoprism_db_pw
+EOF
+				;;
+		esac
+
+		log INFO "$service .env created at $env_file"
+	done
+
+	# Log generated credentials
+	log INFO "Generated credentials (store securely):"
+	log INFO "Postgres root: user=authelia, password=$postgres_pw"
+	log INFO "Nextcloud DB: user=nextcloud, password=$nextcloud_db_pw"
+	log INFO "Photoprism DB: user=photoprism, password=$photoprism_db_pw"
+	log INFO "Photoprism Admin: password=$photoprism_admin_pw"
+	log INFO "Authelia Admin: username=admin, password=$authelia_admin_pw"
+}
+
+generate_authelia_configs() {
+    local config_dir="/mnt/1tb/authelia/config"
+    local config_file="$config_dir/configuration.yml"
+    local users_file="$config_dir/users_database.yml"
+
+    if [[ -f "$config_file" ]] && [[ -f "$users_file" ]]; then
+        log INFO "Authelia configs already exist"
+        return
+    fi
+
+    # Load env vars
+    source "$(get_env_file authelia)"
+
+    # Generate hash for admin password
+    local hash
+    hash=$(docker run --rm authelia/authelia:latest authelia crypto hash generate argon2 --password "$AUTHELIA_ADMIN_PASSWORD" | sed 's/^Digest: //')
+    if [[ -z "$hash" ]]; then
+        log ERROR "Failed to generate password hash for Authelia"
+        exit 1
+    fi
+
+    # Generate users_database.yml if missing
+    if [[ ! -f "$users_file" ]]; then
+        cat > "$users_file" <<EOF
+users:
+  admin:
+    displayname: "Admin User"
+    password: "$hash"
+    email: admin@example.com
+    groups:
+      - admins
+EOF
+        log INFO "Generated $users_file with admin user"
+    fi
+
+    # Generate configuration.yml if missing
+    if [[ ! -f "$config_file" ]]; then
+        cat > "$config_file" <<EOF
+server:
+  address: tcp://0.0.0.0:9091
+
+log:
+  level: info
+
+authentication_backend:
+  file:
+    path: /config/users_database.yml
+  password_reset:
+    disable: true
+
+access_control:
+  default_policy: two_factor
+  rules:
+    - domain: "*.7gram.xyz"
+      policy: two_factor
+
+session:
+  name: authelia_session
+  secret: \${AUTHELIA_SESSION_SECRET}
+  expiration: 1h
+  inactivity: 5m
+  cookies:
+    - domain: 7gram.xyz
+      authelia_url: https://auth.7gram.xyz
+      same_site: lax
+  redis:
+    host: redis
+    port: 6379
+
+storage:
+  encryption_key: \${AUTHELIA_STORAGE_ENCRYPTION_KEY}
+  postgres:
+    address: postgres:5432
+    database: authelia
+    username: authelia
+    password: \${POSTGRES_PASSWORD}
+
+notifier:
+  filesystem:
+    filename: /config/notification.txt
+
+regulation:
+  max_retries: 3
+  find_time: 2m
+  ban_time: 5m
+
+theme: dark
+EOF
+        log INFO "Generated $config_file"
+    fi
 }
 
 show_environment_info() {
@@ -129,57 +346,155 @@ docker_network_sanity() {
 	fi
 }
 
+create_directories() {
+    local target_services=("${@}")
+    log INFO "Creating missing data directories for ${target_services[*]}..."
+    local dirs=()
+    for service in "${target_services[@]}"; do
+        case "$service" in
+            db)
+                dirs+=("/mnt/1tb/postgres")
+                ;;
+            authelia)
+                dirs+=("/mnt/1tb/authelia/config" "/mnt/1tb/redis")
+                ;;
+            nginx)
+                dirs+=("/mnt/1tb/nginx/config")
+                ;;
+            nextcloud)
+                dirs+=("/mnt/1tb/nextcloud/config" "/mnt/1tb/nextcloud/data")
+                ;;
+            photoprism)
+                dirs+=("/mnt/1tb/photos" "/mnt/1tb/photoprism/storage")
+                ;;
+            homeassistant)
+                dirs+=("/mnt/1tb/homeassistant")
+                ;;
+        esac
+    done
+
+    for dir in "${dirs[@]}"; do
+        if [[ ! -d "$dir" ]]; then
+            mkdir -p "$dir" || log WARN "Failed to create $dir"
+            log INFO "Created $dir"
+        else
+            log INFO "$dir already exists"
+        fi
+        # Set permissions if root
+        if [[ $EUID -eq 0 ]]; then
+            local puid pgid
+            puid=$(grep '^PUID=' "$(get_env_file db)" | cut -d= -f2)
+            pgid=$(grep '^PGID=' "$(get_env_file db)" | cut -d= -f2)
+            chown -R "$puid:$pgid" "$dir" || log WARN "Failed to chown $dir"
+        else
+            log WARN "Skipping chown for $dir (not root)"
+        fi
+    done
+
+    # Generate Authelia configs after dir creation
+    if [[ " ${target_services[*]} " =~ " authelia " ]]; then
+        generate_authelia_configs
+    fi
+}
+
+# Build compose command with files and envs for target services
+build_compose_cmd() {
+    local target_services=("${@}")
+    local compose_files=()
+    local env_files=()
+
+    for service in "${target_services[@]}"; do
+        compose_files+=("-f $(get_compose_file "$service")")
+        env_files+=("--env-file $(get_env_file "$service")")
+    done
+
+    echo "${compose_files[@]}" "${env_files[@]}"
+}
+
 pull_images() {
-	log INFO "Pulling images..."
-	$COMPOSE_CMD -f docker-compose.yml pull --ignore-pull-failures || true
+    local target_services=("${@}")
+	log INFO "Pulling images for ${target_services[*]}..."
+	local cmd_args; cmd_args=$(build_compose_cmd "${target_services[@]}")
+	$COMPOSE_CMD $cmd_args pull --ignore-pull-failures || true
 }
 
 start_stack() {
-	log INFO "Starting FREDDY services..."
-	$COMPOSE_CMD -f docker-compose.yml up -d
+    local target_services=("${@}")
+    create_directories "${target_services[@]}"
+	log INFO "Starting FREDDY services: ${target_services[*]}..."
+	local cmd_args; cmd_args=$(build_compose_cmd "${target_services[@]}")
+	$COMPOSE_CMD $cmd_args up -d
 	log INFO "Waiting for services to initialize..."
 	sleep 10
-	$COMPOSE_CMD -f docker-compose.yml ps
+	$COMPOSE_CMD $cmd_args ps
 }
 
 stop_stack() {
-	log INFO "Stopping FREDDY services..."
-	$COMPOSE_CMD -f docker-compose.yml down --remove-orphans
+    local target_services=("${@}")
+	log INFO "Stopping FREDDY services: ${target_services[*]}..."
+	local cmd_args; cmd_args=$(build_compose_cmd "${target_services[@]}")
+	$COMPOSE_CMD $cmd_args down --remove-orphans
 }
 
 health_checks() {
-	log INFO "Running quick health checks..."
-	# Pi-hole admin
-	if curl -fsS http://localhost:8080/admin/ >/dev/null 2>&1; then
-		log INFO "Pi-hole UI: http://localhost:8080/admin"
-	else
-		log WARN "Pi-hole UI not reachable yet"
-	fi
-	# Home Assistant (host network)
-	if curl -fsS http://localhost:8123/ >/dev/null 2>&1; then
-		log INFO "Home Assistant: http://localhost:8123"
-	else
-		log WARN "Home Assistant not reachable yet"
-	fi
-	# Syncthing
-	if curl -fsS http://localhost:8384/ >/dev/null 2>&1; then
-		log INFO "Syncthing: http://localhost:8384"
-	else
-		log WARN "Syncthing not reachable yet"
-	fi
-	# Portainer
-	if curl -fsS http://localhost:9000/api/status >/dev/null 2>&1; then
-		log INFO "Portainer: http://localhost:9000"
-	else
-		log WARN "Portainer not reachable yet"
-	fi
+    local target_services=("${@}")
+	log INFO "Running quick health checks for ${target_services[*]}..."
+	for service in "${target_services[@]}"; do
+		case "$service" in
+			homeassistant)
+				if curl -fsS http://localhost:8123/api/ >/dev/null 2>&1; then
+					log INFO "Home Assistant: http://localhost:8123"
+				else
+					log WARN "Home Assistant not reachable yet"
+				fi
+				;;
+			nextcloud)
+				if curl -fsS -k https://localhost:8443/status.php >/dev/null 2>&1; then
+					log INFO "Nextcloud: https://localhost:8443"
+				else
+					log WARN "Nextcloud not reachable yet"
+				fi
+				;;
+			photoprism)
+				if curl -fsS http://localhost:2342/api/v1/status >/dev/null 2>&1; then
+					log INFO "Photoprism: http://localhost:2342"
+				else
+					log WARN "Photoprism not reachable yet"
+				fi
+				;;
+			authelia)
+				if curl -fsS http://localhost:9091/api/state >/dev/null 2>&1; then
+					log INFO "Authelia: http://localhost:9091"
+				else
+					log WARN "Authelia not reachable yet"
+				fi
+				;;
+			nginx)
+				if curl -fsS http://localhost >/dev/null 2>&1; then
+					log INFO "Nginx: http://localhost"
+				else
+					log WARN "Nginx not reachable yet"
+				fi
+				;;
+			db)
+				if docker exec postgres pg_isready -U authelia >/dev/null 2>&1; then
+					log INFO "Postgres DB: healthy"
+				else
+					log WARN "Postgres DB not ready yet"
+				fi
+				;;
+		esac
+	done
 }
 
 usage() {
 	cat <<USAGE
 FREDDY startup script
 
-Usage: $(basename "$0") [options]
+Usage: $(basename "$0") [options] [service]
+	service: all (default) or specific like db, authelia, nginx, nextcloud, photoprism, homeassistant
+
+Options:
 	--show-env        Print environment info and exit
 	--stop            Stop and remove services
 	--status          Show compose status
@@ -190,7 +505,7 @@ USAGE
 }
 
 main() {
-	local do_pull=1 action=start
+	local do_pull=1 action=start target_service="all"
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
 			--show-env) action=showenv; shift ;;
@@ -199,7 +514,13 @@ main() {
 			--logs)     action=logs; shift ;;
 			--no-pull)  do_pull=0; shift ;;
 			-h|--help)  usage; exit 0 ;;
-			*) log WARN "Unknown arg: $1"; usage; exit 1 ;;
+			*) 
+				if [[ " ${SERVICES[*]} all " =~ " $1 " ]]; then
+					target_service="$1"; shift
+				else
+					log WARN "Unknown arg: $1"; usage; exit 1
+				fi
+				;;
 		esac
 	done
 
@@ -207,31 +528,44 @@ main() {
 	case "$action" in
 		showenv)
 			show_environment_info; exit 0 ;;
-		stop)
-			stop_stack; exit 0 ;;
-		status)
-			$COMPOSE_CMD -f docker-compose.yml ps; exit 0 ;;
-		logs)
-			$COMPOSE_CMD -f docker-compose.yml logs -f; exit 0 ;;
 	esac
 
 	cd "$PROJECT_ROOT"
-	[[ -f "$ENV_FILE" ]] || create_env_file
+	create_env_files
+
+	local target_services=()
+	if [[ "$target_service" == "all" ]]; then
+		target_services=("${SERVICES[@]}")
+	else
+		target_services=("$target_service")
+	fi
 
 	# Clean and sanity check
-	$COMPOSE_CMD -f docker-compose.yml down --remove-orphans >/dev/null 2>&1 || true
+	local cmd_args; cmd_args=$(build_compose_cmd "${target_services[@]}")
+	$COMPOSE_CMD $cmd_args down --remove-orphans >/dev/null 2>&1 || true
 	docker_network_sanity
 
-	(( do_pull )) && pull_images
-	start_stack
-	health_checks
+	log INFO "Ensuring shared networks exist..."
+	docker network create backend || true
+
+	case "$action" in
+		stop)
+			stop_stack "${target_services[@]}"; exit 0 ;;
+		status)
+			$COMPOSE_CMD $cmd_args ps; exit 0 ;;
+		logs)
+			$COMPOSE_CMD $cmd_args logs -f; exit 0 ;;
+	esac
+
+	(( do_pull )) && pull_images "${target_services[@]}"
+	start_stack "${target_services[@]}"
+	health_checks "${target_services[@]}"
 
 	log INFO "Done. Common endpoints:"
-	echo "  Pi-hole:        http://localhost:8080/admin"
 	echo "  Home Assistant: http://localhost:8123"
-	echo "  Syncthing:      http://localhost:8384"
-	echo "  Portainer:      http://localhost:9000"
+	echo "  Nextcloud:      https://localhost:8443"
+	echo "  Photoprism:     http://localhost:2342"
+	# Add more as needed
 }
 
 main "$@"
-

@@ -21,14 +21,18 @@ services:
     ports:
       - "8443:443"
     restart: unless-stopped
-    depends_on:
-      - postgres
     healthcheck:
       test: ["CMD", "curl", "-f", "https://localhost/status.php", "||", "exit", "1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
+    networks:
+      - backend
+
+networks:
+  backend:
+    external: true
 
 volumes:
   nextcloud_config:
