@@ -94,7 +94,7 @@ create_env_files() {
 	ip=$(hostname -I 2>/dev/null | awk '{print $1}')
 	ip=${ip:-192.168.1.100}
 	# Use original user's UID/GID even when running with sudo
-	if [[ -n "$SUDO_UID" && -n "$SUDO_GID" ]]; then
+	if [ -n "${SUDO_UID:-}" ] && [ -n "${SUDO_GID:-}" ]; then
 		puid=$SUDO_UID
 		pgid=$SUDO_GID
 	else
