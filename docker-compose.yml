@@ -1,0 +1,323 @@
+# Docker Compose for FREDDY - Personal & Authentication Services  
+# Lightweight server handling photos, cloud storage, home automation, and auth
+
+# Named volumes for data/cache/databases only
+volumes:
+  # Photo Management volumes
+  photos_originals:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/photos
+  photoprism_storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/photoprism/storage
+  photoprism_postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/photoprism/postgres
+
+  # Cloud Storage volumes
+  nextcloud_config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/nextcloud/config
+  nextcloud_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/nextcloud/data
+  nextcloud_postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/nextcloud/postgres
+
+  # System Services volumes
+  homeassistant_config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/homeassistant
+
+  # Authentication volumes
+  authelia_config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/authelia/config
+  redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/authelia/redis
+  authelia_postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/authelia/postgres
+
+  # Reverse Proxy volumes  
+  nginx_config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/nginx/config
+
+# Custom networks for service isolation
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+  database:
+    driver: bridge
+
+services:
+  # =============================================================================
+  # REVERSE PROXY
+  # =============================================================================
+
+  # nginx reverse proxy
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    volumes:
+      - ./services/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./services/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./services/nginx/html:/dashboard:ro  # Mount dashboard files
+      - /etc/letsencrypt/live/7gram.xyz:/etc/nginx/ssl:ro  # Mount your certs
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: unless-stopped
+    networks:
+      - frontend
+      - backend
+    extra_hosts:
+      - "sullivan.7gram.xyz:100.73.41.1"  # Sullivan server IP
+      - "freddy.7gram.xyz:100.73.41.1"    # Freddy server IP (self)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # =============================================================================
+  # PHOTO MANAGEMENT
+  # =============================================================================
+
+  # photoprism - dedicated photo management app
+  photoprism:
+    image: photoprism/photoprism:latest
+    container_name: photoprism
+    environment:
+      - PHOTOPRISM_ADMIN_PASSWORD=${PHOTOPRISM_ADMIN_PASSWORD:-pleasechange}
+      - PHOTOPRISM_SITE_URL=http://localhost:2342/
+      - PHOTOPRISM_DATABASE_DRIVER=postgres
+      - PHOTOPRISM_DATABASE_SERVER=photoprism-postgres:5432
+      - PHOTOPRISM_DATABASE_NAME=${PHOTOPRISM_DB_NAME:-photoprism}
+      - PHOTOPRISM_DATABASE_USER=${PHOTOPRISM_DB_USER:-photoprism}
+      - PHOTOPRISM_DATABASE_PASSWORD=${PHOTOPRISM_DB_PASSWORD:-changeme}
+      - PHOTOPRISM_UID=${PUID:-1000}
+      - PHOTOPRISM_GID=${PGID:-1000}
+      - TZ=${TZ:-America/Toronto}
+    volumes:
+      - photos_originals:/photoprism/originals
+      - photoprism_storage:/photoprism/storage
+    ports:
+      - "2342:2342"
+    restart: unless-stopped
+    depends_on:
+      - photoprism-postgres
+    networks:
+      - backend
+      - database
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:2342/api/v1/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # postgres database for photoprism
+  photoprism-postgres:
+    image: postgres:16-alpine
+    container_name: photoprism-postgres
+    environment:
+      - POSTGRES_DB=${PHOTOPRISM_DB_NAME:-photoprism}
+      - POSTGRES_USER=${PHOTOPRISM_DB_USER:-photoprism}
+      - POSTGRES_PASSWORD=${PHOTOPRISM_DB_PASSWORD:-changeme}
+      - TZ=${TZ:-America/Toronto}
+    volumes:
+      - photoprism_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - database
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${PHOTOPRISM_DB_USER:-photoprism}", "-d", "${PHOTOPRISM_DB_NAME:-photoprism}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # =============================================================================
+  # CLOUD STORAGE
+  # =============================================================================
+
+  # nextcloud - file sharing with postgres db
+  nextcloud:
+    image: lscr.io/linuxserver/nextcloud:latest
+    container_name: nextcloud
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/Toronto}
+      - POSTGRES_HOST=nextcloud-postgres
+      - POSTGRES_DB=${NEXTCLOUD_DB_NAME:-nextcloud}
+      - POSTGRES_USER=${NEXTCLOUD_DB_USER:-nextcloud}
+      - POSTGRES_PASSWORD=${NEXTCLOUD_DB_PASSWORD:-changeme}
+    volumes:
+      - nextcloud_config:/config
+      - nextcloud_data:/data
+    ports:
+      - "8443:443"
+    restart: unless-stopped
+    depends_on:
+      - nextcloud-postgres
+    networks:
+      - backend
+      - database
+    healthcheck:
+      test: ["CMD", "curl", "-f", "https://localhost/status.php", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # postgres database for nextcloud
+  nextcloud-postgres:
+    image: postgres:16-alpine
+    container_name: nextcloud-postgres
+    environment:
+      - POSTGRES_DB=${NEXTCLOUD_DB_NAME:-nextcloud}
+      - POSTGRES_USER=${NEXTCLOUD_DB_USER:-nextcloud}
+      - POSTGRES_PASSWORD=${NEXTCLOUD_DB_PASSWORD:-changeme}
+      - TZ=${TZ:-America/Toronto}
+    volumes:
+      - nextcloud_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - database
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${NEXTCLOUD_DB_USER:-nextcloud}", "-d", "${NEXTCLOUD_DB_NAME:-nextcloud}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # =============================================================================
+  # SYSTEM SERVICES
+  # =============================================================================
+
+  # home assistant (requires host network for device discovery)
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homeassistant
+    privileged: true
+    network_mode: host  # Required for device discovery
+    environment:
+      - TZ=${TZ:-America/Toronto}
+    volumes:
+      - homeassistant_config:/config
+      - /etc/localtime:/etc/localtime:ro
+      - /run/dbus:/run/dbus:ro
+      - /dev:/dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8123/api/", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # =============================================================================
+  # AUTHENTICATION & SECURITY
+  # =============================================================================
+
+  # authelia - authentication and authorization server
+  authelia:
+    image: authelia/authelia:latest
+    container_name: authelia
+    environment:
+      - TZ=${TZ:-America/Toronto}
+      - AUTHELIA_JWT_SECRET=${AUTHELIA_JWT_SECRET}
+      - AUTHELIA_SESSION_SECRET=${AUTHELIA_SESSION_SECRET}
+      - AUTHELIA_STORAGE_ENCRYPTION_KEY=${AUTHELIA_STORAGE_ENCRYPTION_KEY}
+      - AUTHELIA_DB_PASSWORD=${AUTHELIA_DB_PASSWORD:-changeme}
+    volumes:
+      - authelia_config:/config
+    restart: unless-stopped
+    networks:
+      - backend
+      - database
+    depends_on:
+      - redis
+      - authelia-postgres
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:9091/api/state"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # redis - session storage for authelia
+  redis:
+    image: redis:alpine
+    container_name: redis
+    restart: unless-stopped
+    networks:
+      - backend
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # postgres database for authelia
+  authelia-postgres:
+    image: postgres:16-alpine
+    container_name: authelia-postgres
+    environment:
+      - POSTGRES_DB=${AUTHELIA_DB_NAME:-authelia}
+      - POSTGRES_USER=${AUTHELIA_DB_USER:-authelia}
+      - POSTGRES_PASSWORD=${AUTHELIA_DB_PASSWORD:-changeme}
+      - TZ=${TZ:-America/Toronto}
+    volumes:
+      - authelia_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - database
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${AUTHELIA_DB_USER:-authelia}", "-d", "${AUTHELIA_DB_NAME:-authelia}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

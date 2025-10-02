@@ -30,9 +30,9 @@ session:
 storage:
   encryption_key: placeholder_encryption  # Will be overridden by env
   postgres:
-    address: postgres:5432
-    database: authelia
-    username: authelia
+    address: authelia-postgres:5432
+    database: ${AUTHELIA_DB_NAME:-authelia}
+    username: ${AUTHELIA_DB_USER:-authelia}
     password: placeholder_password  # Will be overridden by env
 
 notifier:

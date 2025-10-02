@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 # FREDDY stack startup script
-# Updated for modular services with separate compose and .env files
-# Handles multiple compose files, per-service env, dependency order
+# Simple single compose file and .env approach
+# Config files organized under services/
 
 set -euo pipefail
 
@@ -16,10 +16,11 @@ NC='\033[0m'
 # Paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
-SERVICES_DIR="$PROJECT_ROOT/services"
+COMPOSE_FILE="$PROJECT_ROOT/docker-compose.yml"
+ENV_FILE="$PROJECT_ROOT/.env"
 
-# List of services in dependency order (DB first)
-SERVICES=("db" "authelia" "nginx" "nextcloud" "photoprism" "homeassistant")
+# List of services in dependency order (DB services first)
+SERVICES=("photoprism-postgres" "nextcloud-postgres" "authelia-postgres" "redis" "authelia" "nginx" "nextcloud" "photoprism" "homeassistant")
 
 COMPOSE_CMD=""
 
@@ -74,20 +75,15 @@ check_prerequisites() {
 	log INFO "Prerequisites OK"
 }
 
-# Function to get compose file for a service
-get_compose_file() {
-    local service=$1
-    echo "$SERVICES_DIR/$service/docker-compose.yml"
-}
 
-# Function to get env file for a service
-get_env_file() {
-    local service=$1
-    echo "$SERVICES_DIR/$service/.env"
-}
 
-create_env_files() {
-	log INFO "Creating missing .env files for services..."
+create_env_file() {
+	if [[ -f "$ENV_FILE" ]]; then
+		log INFO ".env already exists"
+		return
+	fi
+
+	log INFO "Creating .env file..."
 
 	local tz ip puid pgid
 	tz="${TZ:-America/Toronto}"
@@ -103,9 +99,9 @@ create_env_files() {
 	fi
 
 	# Generate secure passwords once, share where needed
-	local postgres_pw nextcloud_db_pw photoprism_db_pw photoprism_admin_pw authelia_jwt authelia_session authelia_encryption authelia_admin_pw
+	local authelia_db_pw nextcloud_db_pw photoprism_db_pw photoprism_admin_pw authelia_jwt authelia_session authelia_encryption authelia_admin_pw
 	if command -v openssl >/dev/null 2>&1; then
-		postgres_pw="$(openssl rand -hex 16)"
+		authelia_db_pw="$(openssl rand -hex 16)"
 		nextcloud_db_pw="$(openssl rand -hex 16)"
 		photoprism_db_pw="$(openssl rand -hex 16)"
 		photoprism_admin_pw="$(openssl rand -hex 16)"
@@ -114,7 +110,7 @@ create_env_files() {
 		authelia_encryption="$(openssl rand -hex 32)"
 		authelia_admin_pw="$(openssl rand -hex 16)"
 	else
-		postgres_pw="changeme"
+		authelia_db_pw="changeme"
 		nextcloud_db_pw="changeme"
 		photoprism_db_pw="changeme"
 		photoprism_admin_pw="pleasechange"
@@ -130,23 +126,19 @@ create_env_files() {
 	local NEXTCLOUD_DB_USER="nextcloud"
 	local PHOTOPRISM_DB_USER="photoprism"
 
-	for service in "${SERVICES[@]}"; do
-		local env_file; env_file=$(get_env_file "$service")
-		if [[ -f "$env_file" ]]; then
-			log INFO "$service .env already exists"
-			continue
-		fi
-
-		# Common vars
-		cat > "$env_file" <<EOF
-# $service environment
-TZ=$tz
+	# Create comprehensive .env file
+	cat > "$ENV_FILE" <<EOF
+# FREDDY Stack Environment Configuration
+# Generated $(date)
 
 # User/Group IDs
 PUID=$puid
 PGID=$pgid
 
-# Domain and SSL (for nginx/swag)
+# Timezone
+TZ=$tz
+
+# Domain and SSL settings
 DOMAIN=7gram.xyz
 EMAIL=nunie.smith01@gmail.com
 SUBDOMAINS=wildcard
@@ -154,77 +146,66 @@ VALIDATION=http
 ONLY_SUBDOMAINS=false
 STAGING=false
 
+# Photos path
+PHOTOS_PATH=/mnt/1tb/photos
+
 # Watchtower settings
 WATCHTOWER_SCHEDULE="0 2 * * *"
 WATCHTOWER_NOTIFICATIONS=
 WATCHTOWER_NOTIFICATION_URL=
 WATCHTOWER_MONITOR_ONLY=false
 
-# Photos path
-PHOTOS_PATH=/mnt/1tb/photos
-EOF
+# ============================================================================
+# DATABASE CREDENTIALS
+# ============================================================================
 
-		# Service-specific vars
-		case "$service" in
-			db)
-				cat >> "$env_file" <<EOF
+# Authelia Database
+AUTHELIA_DB_NAME=authelia
+AUTHELIA_DB_USER=authelia
+AUTHELIA_DB_PASSWORD=$authelia_db_pw
 
-# Postgres settings
+# Nextcloud Database
 NEXTCLOUD_DB_NAME=$NEXTCLOUD_DB_NAME
-POSTGRES_USER=authelia
-POSTGRES_PASSWORD=$postgres_pw
 NEXTCLOUD_DB_USER=$NEXTCLOUD_DB_USER
 NEXTCLOUD_DB_PASSWORD=$nextcloud_db_pw
+
+# Photoprism Database
+PHOTOPRISM_DB_NAME=photoprism
 PHOTOPRISM_DB_USER=$PHOTOPRISM_DB_USER
 PHOTOPRISM_DB_PASSWORD=$photoprism_db_pw
-EOF
-				;;
-			authelia)
-				cat >> "$env_file" <<EOF
 
-# Authelia secrets
+# ============================================================================
+# APPLICATION CREDENTIALS
+# ============================================================================
+
+# Authelia Secrets
 AUTHELIA_JWT_SECRET=$authelia_jwt
 AUTHELIA_SESSION_SECRET=$authelia_session
 AUTHELIA_STORAGE_ENCRYPTION_KEY=$authelia_encryption
-
-# Shared DB password for storage
-POSTGRES_PASSWORD=$postgres_pw
-
-# Authelia admin password (plain, for logging; hash in users_database.yml)
 AUTHELIA_ADMIN_PASSWORD=$authelia_admin_pw
-EOF
-				;;
-			nextcloud)
-				cat >> "$env_file" <<EOF
 
-# Shared DB settings
-POSTGRES_HOST=postgres
+# Photoprism Settings
+PHOTOPRISM_ADMIN_PASSWORD=$photoprism_admin_pw
+PHOTOPRISM_SITE_URL=http://localhost:2342/
+PHOTOPRISM_DATABASE_DRIVER=postgres
+PHOTOPRISM_DATABASE_SERVER=photoprism-postgres:5432
+PHOTOPRISM_DATABASE_NAME=photoprism
+PHOTOPRISM_DATABASE_USER=$PHOTOPRISM_DB_USER
+PHOTOPRISM_UID=$puid
+PHOTOPRISM_GID=$pgid
+
+# Nextcloud Settings
+POSTGRES_HOST=nextcloud-postgres
 POSTGRES_DB=$NEXTCLOUD_DB_NAME
 POSTGRES_USER=$NEXTCLOUD_DB_USER
 POSTGRES_PASSWORD=$nextcloud_db_pw
 EOF
-				;;
-			photoprism)
-				cat >> "$env_file" <<EOF
 
-# Photoprism admin password
-PHOTOPRISM_ADMIN_PASSWORD=$photoprism_admin_pw
-
-# Shared DB settings
-PHOTOPRISM_DATABASE_SERVER=postgres:5432
-PHOTOPRISM_DATABASE_NAME=photoprism
-PHOTOPRISM_DATABASE_USER=$PHOTOPRISM_DB_USER
-PHOTOPRISM_DATABASE_PASSWORD=$photoprism_db_pw
-EOF
-				;;
-		esac
-
-		log INFO "$service .env created at $env_file"
-	done
-
+	log INFO ".env created at $ENV_FILE"
+	
 	# Log generated credentials
 	log INFO "Generated credentials (store securely):"
-	log INFO "Postgres root: user=authelia, password=$postgres_pw"
+	log INFO "Authelia DB: user=authelia, password=$authelia_db_pw"
 	log INFO "Nextcloud DB: user=nextcloud, password=$nextcloud_db_pw"
 	log INFO "Photoprism DB: user=photoprism, password=$photoprism_db_pw"
 	log INFO "Photoprism Admin: password=$photoprism_admin_pw"
@@ -242,7 +223,7 @@ generate_authelia_configs() {
     fi
 
     # Load env vars
-    source "$(get_env_file authelia)"
+    source "$ENV_FILE"
 
     # Generate hash for admin password
     local hash
@@ -303,10 +284,10 @@ session:
 storage:
   encryption_key: \${AUTHELIA_STORAGE_ENCRYPTION_KEY}
   postgres:
-    address: postgres:5432
+    address: authelia-postgres:5432
     database: authelia
     username: authelia
-    password: \${POSTGRES_PASSWORD}
+    password: \${AUTHELIA_DB_PASSWORD}
 
 notifier:
   filesystem:
@@ -352,11 +333,20 @@ create_directories() {
     local dirs=()
     for service in "${target_services[@]}"; do
         case "$service" in
-            db)
-                dirs+=("/mnt/1tb/postgres")
+            photoprism-postgres)
+                dirs+=("/mnt/1tb/photoprism/postgres")
+                ;;
+            nextcloud-postgres)
+                dirs+=("/mnt/1tb/nextcloud/postgres")
+                ;;
+            authelia-postgres)
+                dirs+=("/mnt/1tb/authelia/postgres")
+                ;;
+            redis)
+                dirs+=("/mnt/1tb/authelia/redis")
                 ;;
             authelia)
-                dirs+=("/mnt/1tb/authelia/config" "/mnt/1tb/redis")
+                dirs+=("/mnt/1tb/authelia/config")
                 ;;
             nginx)
                 dirs+=("/mnt/1tb/nginx/config")
@@ -383,8 +373,8 @@ create_directories() {
         # Set permissions if root
         if [[ $EUID -eq 0 ]]; then
             local puid pgid
-            puid=$(grep '^PUID=' "$(get_env_file db)" | cut -d= -f2)
-            pgid=$(grep '^PGID=' "$(get_env_file db)" | cut -d= -f2)
+            puid=$(grep '^PUID=' "$ENV_FILE" | cut -d= -f2)
+            pgid=$(grep '^PGID=' "$ENV_FILE" | cut -d= -f2)
             chown -R "$puid:$pgid" "$dir" || log WARN "Failed to chown $dir"
         else
             log WARN "Skipping chown for $dir (not root)"
@@ -397,43 +387,41 @@ create_directories() {
     fi
 }
 
-# Build compose command with files and envs for target services
-build_compose_cmd() {
-    local target_services=("${@}")
-    local compose_files=()
-    local env_files=()
 
-    for service in "${target_services[@]}"; do
-        compose_files+=("-f $(get_compose_file "$service")")
-        env_files+=("--env-file $(get_env_file "$service")")
-    done
-
-    echo "${compose_files[@]}" "${env_files[@]}"
-}
 
 pull_images() {
     local target_services=("${@}")
 	log INFO "Pulling images for ${target_services[*]}..."
-	local cmd_args; cmd_args=$(build_compose_cmd "${target_services[@]}")
-	$COMPOSE_CMD $cmd_args pull --ignore-pull-failures || true
+	if [[ ${#target_services[@]} -eq 0 || "${target_services[0]}" == "all" ]]; then
+		$COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull --ignore-pull-failures || true
+	else
+		$COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull "${target_services[@]}" --ignore-pull-failures || true
+	fi
 }
 
 start_stack() {
     local target_services=("${@}")
     create_directories "${target_services[@]}"
 	log INFO "Starting FREDDY services: ${target_services[*]}..."
-	local cmd_args; cmd_args=$(build_compose_cmd "${target_services[@]}")
-	$COMPOSE_CMD $cmd_args up -d
+	if [[ ${#target_services[@]} -eq 0 || "${target_services[0]}" == "all" ]]; then
+		$COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d
+	else
+		$COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d "${target_services[@]}"
+	fi
 	log INFO "Waiting for services to initialize..."
 	sleep 10
-	$COMPOSE_CMD $cmd_args ps
+	$COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps
 }
 
 stop_stack() {
     local target_services=("${@}")
 	log INFO "Stopping FREDDY services: ${target_services[*]}..."
-	local cmd_args; cmd_args=$(build_compose_cmd "${target_services[@]}")
-	$COMPOSE_CMD $cmd_args down --remove-orphans
+	if [[ ${#target_services[@]} -eq 0 || "${target_services[0]}" == "all" ]]; then
+		$COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" down --remove-orphans
+	else
+		$COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" stop "${target_services[@]}"
+		$COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" rm -f "${target_services[@]}"
+	fi
 }
 
 health_checks() {
@@ -476,11 +464,32 @@ health_checks() {
 					log WARN "Nginx not reachable yet"
 				fi
 				;;
-			db)
-				if docker exec postgres pg_isready -U authelia >/dev/null 2>&1; then
-					log INFO "Postgres DB: healthy"
+			photoprism-postgres)
+				if docker exec photoprism-postgres pg_isready -U photoprism >/dev/null 2>&1; then
+					log INFO "Photoprism Postgres: healthy"
 				else
-					log WARN "Postgres DB not ready yet"
+					log WARN "Photoprism Postgres not ready yet"
+				fi
+				;;
+			nextcloud-postgres)
+				if docker exec nextcloud-postgres pg_isready -U nextcloud >/dev/null 2>&1; then
+					log INFO "Nextcloud Postgres: healthy"
+				else
+					log WARN "Nextcloud Postgres not ready yet"
+				fi
+				;;
+			authelia-postgres)
+				if docker exec authelia-postgres pg_isready -U authelia >/dev/null 2>&1; then
+					log INFO "Authelia Postgres: healthy"
+				else
+					log WARN "Authelia Postgres not ready yet"
+				fi
+				;;
+			redis)
+				if docker exec redis redis-cli ping >/dev/null 2>&1; then
+					log INFO "Redis: healthy"
+				else
+					log WARN "Redis not ready yet"
 				fi
 				;;
 		esac
@@ -489,10 +498,12 @@ health_checks() {
 
 usage() {
 	cat <<USAGE
-FREDDY startup script
+FREDDY startup script - Single compose file approach
 
 Usage: $(basename "$0") [options] [service]
-	service: all (default) or specific like db, authelia, nginx, nextcloud, photoprism, homeassistant
+	service: all (default) or specific service names like:
+	         photoprism-postgres, nextcloud-postgres, authelia-postgres, 
+	         redis, authelia, nginx, nextcloud, photoprism, homeassistant
 
 Options:
 	--show-env        Print environment info and exit
@@ -501,6 +512,11 @@ Options:
 	--logs            Tail logs (Ctrl+C to exit)
 	--no-pull         Do not pull images before start
 	-h, --help        Show this help
+
+Files:
+	docker-compose.yml    Main compose file
+	.env                  Environment variables
+	services/             Configuration files organized by service
 USAGE
 }
 
@@ -531,7 +547,7 @@ main() {
 	esac
 
 	cd "$PROJECT_ROOT"
-	create_env_files
+	create_env_file
 
 	local target_services=()
 	if [[ "$target_service" == "all" ]]; then
@@ -541,20 +557,25 @@ main() {
 	fi
 
 	# Clean and sanity check
-	local cmd_args; cmd_args=$(build_compose_cmd "${target_services[@]}")
-	$COMPOSE_CMD $cmd_args down --remove-orphans >/dev/null 2>&1 || true
+	$COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" down --remove-orphans >/dev/null 2>&1 || true
 	docker_network_sanity
 
 	log INFO "Ensuring shared networks exist..."
 	docker network create backend || true
+	docker network create frontend || true
 
 	case "$action" in
 		stop)
 			stop_stack "${target_services[@]}"; exit 0 ;;
 		status)
-			$COMPOSE_CMD $cmd_args ps; exit 0 ;;
+			$COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps; exit 0 ;;
 		logs)
-			$COMPOSE_CMD $cmd_args logs -f; exit 0 ;;
+			if [[ ${#target_services[@]} -eq 0 || "${target_services[0]}" == "all" ]]; then
+				$COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" logs -f
+			else
+				$COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" logs -f "${target_services[@]}"
+			fi
+			exit 0 ;;
 	esac
 
 	(( do_pull )) && pull_images "${target_services[@]}"
