@@ -97,11 +97,13 @@ services:
   nginx:
     image: nginx:latest
     container_name: nginx
+    environment:
+      - TZ=${TZ:-America/Toronto}
     volumes:
       - ./services/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./services/nginx/conf.d:/etc/nginx/conf.d:ro
       - ./services/nginx/html:/dashboard:ro  # Mount dashboard files
-      - /etc/letsencrypt/live/7gram.xyz:/etc/nginx/ssl:ro  # Mount your certs
+      - /opt/ssl/7gram.xyz:/etc/nginx/ssl:ro  # Mount your certs
     ports:
       - "80:80"
       - "443:443"
@@ -112,8 +114,12 @@ services:
     extra_hosts:
       - "sullivan.7gram.xyz:100.73.41.1"  # Sullivan server IP
       - "freddy.7gram.xyz:100.73.41.1"    # Freddy server IP (self)
+    depends_on:
+      - nextcloud
+      - photoprism
+      - authelia
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost"]
+      test: ["CMD-SHELL", "curl -k -H 'Host: 7gram.xyz' -f https://localhost || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

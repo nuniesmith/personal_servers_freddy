@@ -22,7 +22,7 @@ desktop-win	300	IN	A	100.114.87.27
 emby	300	IN	A	100.121.199.80
 plex	300	IN	A	100.121.199.80
 jellyfin	300	IN	A	100.121.199.80
-audiobooks	300	IN	A	100.121.199.80
+abs	300	IN	A	100.121.199.80
 
 ;; Sullivan Download Management
 qbt	300	IN	A	100.121.199.80
