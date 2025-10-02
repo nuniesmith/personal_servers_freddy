@@ -10,6 +10,10 @@ authentication_backend:
   password_reset:
     disable: true  # Disable password reset since we haven't configured email yet
 
+identity_validation:
+  reset_password:
+    jwt_secret: placeholder_jwt  # Will be overridden by env
+
 access_control:
   default_policy: two_factor
   rules:
@@ -31,8 +35,8 @@ storage:
   encryption_key: placeholder_encryption  # Will be overridden by env
   postgres:
     address: authelia-postgres:5432
-    database: ${AUTHELIA_DB_NAME:-authelia}
-    username: ${AUTHELIA_DB_USER:-authelia}
+    database: placeholder_database  # Will be overridden by env
+    username: placeholder_username  # Will be overridden by env
     password: placeholder_password  # Will be overridden by env
 
 notifier:
