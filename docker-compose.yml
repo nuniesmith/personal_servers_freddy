@@ -118,6 +118,7 @@ services:
       - nextcloud
       - photoprism
       - authelia
+      - audiobookshelf
     healthcheck:
       test: ["CMD-SHELL", "curl -k -H 'Host: 7gram.xyz' -f https://localhost || exit 1"]
       interval: 30s
@@ -329,3 +330,19 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+
+  # audiobookshelf
+  audiobookshelf:
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    container_name: audiobookshelf
+    ports:
+      - 13378:80
+    volumes:
+      - ${MEDIA_PATH_AUDIOBOOKS:-/media/audiobooks}:/audiobooks
+      - ${MEDIA_PATH_AUDIOBOOKS_CONFIG:-./services/audiobookshelf/config}:/config
+      - ${MEDIA_PATH_AUDIOBOOKS_METADATA:-./services/audiobookshelf/metadata}:/metadata
+    environment:
+      - TZ=America/Toronto
+    networks:
+      - backend
+    restart: always

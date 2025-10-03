@@ -319,3 +319,5 @@ config/syncthing/https-cert.pem
 config/syncthing/https-key.pem
 config/syncthing/key.pem
 config/syncthing/index-v2/main.db
+
+services/audiobookshelf/metadata/*
