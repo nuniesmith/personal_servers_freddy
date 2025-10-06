@@ -79,6 +79,20 @@ volumes:
       o: bind
       device: /mnt/1tb/nginx/config
 
+  # Syncthing volumes
+  syncthing_config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/syncthing/config
+  syncthing_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/syncthing/data
+
 # Custom networks for service isolation
 networks:
   frontend:
@@ -113,17 +127,18 @@ services:
       - backend
     extra_hosts:
       - "sullivan.7gram.xyz:100.73.41.1"  # Sullivan server IP
+      - "sullivan:100.73.41.1"            # Short name for nginx configs
       - "freddy.7gram.xyz:100.73.41.1"    # Freddy server IP (self)
-    depends_on:
-      - nextcloud
-      - photoprism
-      - authelia
-      - audiobookshelf
+      - "freddy:100.73.41.1"              # Short name for nginx configs
+      - "oryx:100.73.41.1"                # Oryx server (if exists)
+      - "desktop:100.73.41.1"             # Desktop (if exists)
+    # Note: No depends_on - nginx should start immediately and proxy to services as they come up
     healthcheck:
-      test: ["CMD-SHELL", "curl -k -H 'Host: 7gram.xyz' -f https://localhost || exit 1"]
+      test: ["CMD-SHELL", "curl -kf https://127.0.0.1/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 15s  # Give nginx time to start HTTPS
 
   # =============================================================================
   # PHOTO MANAGEMENT
@@ -145,18 +160,19 @@ services:
       - PHOTOPRISM_GID=${PGID:-1000}
       - TZ=${TZ:-America/Toronto}
     volumes:
-      - photos_originals:/photoprism/originals
+      - /mnt/1tb/photos/originals:/photoprism/originals
       - photoprism_storage:/photoprism/storage
     ports:
       - "2342:2342"
     restart: unless-stopped
     depends_on:
-      - photoprism-postgres
+      photoprism-postgres:
+        condition: service_healthy
     networks:
       - backend
       - database
     healthcheck:
-      test: ["CMD", "wget", "--spider", "http://localhost:2342/api/v1/status"]
+      test: ["CMD", "photoprism", "status"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -206,16 +222,17 @@ services:
       - "8443:443"
     restart: unless-stopped
     depends_on:
-      - nextcloud-postgres
+      nextcloud-postgres:
+        condition: service_healthy
     networks:
       - backend
       - database
     healthcheck:
-      test: ["CMD", "curl", "-f", "https://localhost/status.php", "||", "exit", "1"]
+      test: ["CMD-SHELL", "curl -fk https://localhost/status.php || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 90s
 
   # postgres database for nextcloud
   nextcloud-postgres:
@@ -257,7 +274,7 @@ services:
       - /dev:/dev
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8123/api/", "||", "exit", "1"]
+      test: ["CMD", "curl", "-sf", "http://localhost:8123/manifest.json"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -286,14 +303,16 @@ services:
       - backend
       - database
     depends_on:
-      - redis
-      - authelia-postgres
+      redis:
+        condition: service_healthy
+      authelia-postgres:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--spider", "http://localhost:9091/api/state"]
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:9091/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 45s
 
   # redis - session storage for authelia
   redis:
@@ -346,3 +365,42 @@ services:
     networks:
       - backend
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider --quiet http://localhost:80/healthcheck || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # =============================================================================
+  # FILE SYNCHRONIZATION
+  # =============================================================================
+
+  # syncthing - continuous file synchronization
+  syncthing:
+    image: lscr.io/linuxserver/syncthing:latest
+    container_name: syncthing
+    hostname: freddy-syncthing
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/Toronto}
+    volumes:
+      - syncthing_config:/config
+      - syncthing_data:/data
+      # Add additional sync folders as needed
+      # - /mnt/1tb/sync:/sync
+    ports:
+      - "8384:8384"      # Web UI
+      - "22000:22000/tcp" # TCP file transfers
+      - "22000:22000/udp" # QUIC file transfers  
+      - "21027:21027/udp" # Local discovery
+    restart: unless-stopped
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8384/rest/noauth/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

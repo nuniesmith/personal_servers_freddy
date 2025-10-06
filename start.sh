@@ -20,7 +20,7 @@ COMPOSE_FILE="$PROJECT_ROOT/docker-compose.yml"
 ENV_FILE="$PROJECT_ROOT/.env"
 
 # List of services in dependency order (DB services first)
-SERVICES=("photoprism-postgres" "nextcloud-postgres" "authelia-postgres" "redis" "authelia" "nginx" "nextcloud" "photoprism" "homeassistant")
+SERVICES=("photoprism-postgres" "nextcloud-postgres" "authelia-postgres" "redis" "authelia" "nginx" "nextcloud" "photoprism" "homeassistant" "audiobookshelf" "syncthing")
 
 COMPOSE_CMD=""
 
@@ -73,6 +73,61 @@ check_prerequisites() {
 		log ERROR "Docker Compose is not available"; exit 1
 	fi
 	log INFO "Prerequisites OK"
+}
+
+check_certificates() {
+	log INFO "Checking SSL certificates..."
+	
+	# Run cert-manager check (non-root, just info)
+	if [[ -x "$PROJECT_ROOT/scripts/cert-manager.sh" ]]; then
+		local cert_status
+		cert_status=$("$PROJECT_ROOT/scripts/cert-manager.sh" check 2>&1 | grep -E "Self-signed|Let's Encrypt|No certificate" || echo "unknown")
+		
+		if echo "$cert_status" | grep -qi "self-signed"; then
+			log WARN "Using self-signed SSL certificates"
+			log INFO "💡 To upgrade to Let's Encrypt: sudo ./scripts/cert-manager.sh upgrade"
+			log INFO "💡 Or use: sudo ./start.sh --setup-certs"
+		elif echo "$cert_status" | grep -qi "Let's Encrypt"; then
+			log INFO "✓ Using Let's Encrypt SSL certificates"
+		elif echo "$cert_status" | grep -qi "No certificate"; then
+			log WARN "No SSL certificates found"
+			log INFO "💡 To generate certificates: sudo ./scripts/cert-manager.sh request"
+			log INFO "💡 Or use: sudo ./start.sh --setup-certs"
+		fi
+	fi
+}
+
+setup_letsencrypt_certs() {
+	log INFO "Setting up Let's Encrypt certificates..."
+	
+	if [[ $EUID -ne 0 ]]; then
+		log ERROR "Certificate setup requires root privileges"
+		log INFO "Please run: sudo ./start.sh --setup-certs"
+		exit 1
+	fi
+	
+	if [[ ! -x "$PROJECT_ROOT/scripts/cert-manager.sh" ]]; then
+		log ERROR "cert-manager.sh not found or not executable"
+		exit 1
+	fi
+	
+	# Check current cert status
+	local cert_type
+	cert_type=$("$PROJECT_ROOT/scripts/cert-manager.sh" check 2>&1 | grep -oE "(self-signed|letsencrypt|none)" | head -1 || echo "unknown")
+	
+	if [[ "$cert_type" == "letsencrypt" ]]; then
+		log INFO "Already using Let's Encrypt certificates"
+		return 0
+	fi
+	
+	log INFO "Current certificate type: $cert_type"
+	log INFO "Starting Let's Encrypt upgrade..."
+	echo ""
+	
+	# Run cert-manager upgrade
+	"$PROJECT_ROOT/scripts/cert-manager.sh" upgrade
+	
+	log INFO "✓ Let's Encrypt setup complete"
 }
 
 
@@ -360,6 +415,9 @@ create_directories() {
             homeassistant)
                 dirs+=("/mnt/1tb/homeassistant")
                 ;;
+            syncthing)
+                dirs+=("/mnt/1tb/syncthing/config" "/mnt/1tb/syncthing/data")
+                ;;
         esac
     done
 
@@ -408,8 +466,10 @@ start_stack() {
 	else
 		$COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d "${target_services[@]}"
 	fi
-	log INFO "Waiting for services to initialize..."
-	sleep 10
+	log INFO "Services started. Waiting for initialization..."
+	log INFO "Note: With optimized health checks, nginx should be ready in ~10s"
+	log INFO "      Other services may take 30-90s to complete initialization"
+	sleep 5
 	$COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps
 }
 
@@ -426,74 +486,137 @@ stop_stack() {
 
 health_checks() {
     local target_services=("${@}")
-	log INFO "Running quick health checks for ${target_services[*]}..."
+	log INFO "Running health checks for ${target_services[*]}..."
+	
+	# First, check Docker health status
+	log INFO "Checking Docker health status..."
+	for service in "${target_services[@]}"; do
+		# Skip services that don't have health checks defined
+		case "$service" in
+			photoprism-postgres|nextcloud-postgres|authelia-postgres|redis|photoprism|nextcloud|homeassistant|authelia|nginx|audiobookshelf|syncthing)
+				local health_status
+				health_status=$(docker inspect --format='{{.State.Health.Status}}' "$service" 2>/dev/null || echo "no-healthcheck")
+				
+				case "$health_status" in
+					healthy)
+						log INFO "$service: ✓ healthy"
+						;;
+					starting)
+						log WARN "$service: ⏳ starting (health check in progress)"
+						;;
+					unhealthy)
+						log ERROR "$service: ✗ unhealthy"
+						;;
+					no-healthcheck)
+						# Container exists but no healthcheck
+						local running
+						running=$(docker inspect --format='{{.State.Running}}' "$service" 2>/dev/null || echo "false")
+						if [[ "$running" == "true" ]]; then
+							log INFO "$service: ⚪ running (no health check)"
+						else
+							log WARN "$service: not running"
+						fi
+						;;
+					*)
+						log WARN "$service: unknown status ($health_status)"
+						;;
+				esac
+				;;
+		esac
+	done
+	
+	echo ""
+	log INFO "Testing service endpoints..."
+	
+	# Then test actual endpoints
 	for service in "${target_services[@]}"; do
 		case "$service" in
 			homeassistant)
-				if curl -fsS http://localhost:8123/api/ >/dev/null 2>&1; then
-					log INFO "Home Assistant: http://localhost:8123"
+				if curl -fsS http://localhost:8123/manifest.json >/dev/null 2>&1; then
+					log INFO "Home Assistant endpoint: ✓ http://localhost:8123"
 				else
-					log WARN "Home Assistant not reachable yet"
+					log WARN "Home Assistant endpoint: not reachable yet"
 				fi
 				;;
 			nextcloud)
 				if curl -fsS -k https://localhost:8443/status.php >/dev/null 2>&1; then
-					log INFO "Nextcloud: https://localhost:8443"
+					log INFO "Nextcloud endpoint: ✓ https://localhost:8443"
 				else
-					log WARN "Nextcloud not reachable yet"
+					log WARN "Nextcloud endpoint: not reachable yet"
 				fi
 				;;
 			photoprism)
 				if curl -fsS http://localhost:2342/api/v1/status >/dev/null 2>&1; then
-					log INFO "Photoprism: http://localhost:2342"
+					log INFO "Photoprism endpoint: ✓ http://localhost:2342"
 				else
-					log WARN "Photoprism not reachable yet"
+					log WARN "Photoprism endpoint: not reachable yet"
 				fi
 				;;
 			authelia)
-				if curl -fsS http://localhost:9091/api/state >/dev/null 2>&1; then
-					log INFO "Authelia: http://localhost:9091"
+				# Use correct health endpoint
+				if curl -fsS http://localhost:9091/api/health >/dev/null 2>&1; then
+					log INFO "Authelia endpoint: ✓ http://localhost:9091"
 				else
-					log WARN "Authelia not reachable yet"
+					log WARN "Authelia endpoint: not reachable yet"
 				fi
 				;;
 			nginx)
-				if curl -fsS http://localhost >/dev/null 2>&1; then
-					log INFO "Nginx: http://localhost"
+				# Test dashboard static file
+				if curl -fsS -k https://localhost/dashboard/index.html >/dev/null 2>&1; then
+					log INFO "Nginx dashboard: ✓ https://localhost"
+				elif curl -fsS http://localhost >/dev/null 2>&1; then
+					log INFO "Nginx endpoint: ✓ http://localhost"
 				else
-					log WARN "Nginx not reachable yet"
+					log WARN "Nginx endpoint: not reachable yet"
+				fi
+				;;
+			audiobookshelf)
+				if curl -fsS http://localhost:13378 >/dev/null 2>&1; then
+					log INFO "Audiobookshelf endpoint: ✓ http://localhost:13378"
+				else
+					log WARN "Audiobookshelf endpoint: not reachable yet"
+				fi
+				;;
+			syncthing)
+				if curl -fsS http://localhost:8384/rest/noauth/health >/dev/null 2>&1; then
+					log INFO "Syncthing endpoint: ✓ http://localhost:8384"
+				else
+					log WARN "Syncthing endpoint: not reachable yet"
 				fi
 				;;
 			photoprism-postgres)
-				if docker exec photoprism-postgres pg_isready -U photoprism >/dev/null 2>&1; then
-					log INFO "Photoprism Postgres: healthy"
+				if docker exec photoprism-postgres pg_isready -U photoprism -d photoprism >/dev/null 2>&1; then
+					log INFO "Photoprism Postgres: ✓ healthy"
 				else
-					log WARN "Photoprism Postgres not ready yet"
+					log WARN "Photoprism Postgres: not ready yet"
 				fi
 				;;
 			nextcloud-postgres)
-				if docker exec nextcloud-postgres pg_isready -U nextcloud >/dev/null 2>&1; then
-					log INFO "Nextcloud Postgres: healthy"
+				if docker exec nextcloud-postgres pg_isready -U nextcloud -d nextcloud >/dev/null 2>&1; then
+					log INFO "Nextcloud Postgres: ✓ healthy"
 				else
-					log WARN "Nextcloud Postgres not ready yet"
+					log WARN "Nextcloud Postgres: not ready yet"
 				fi
 				;;
 			authelia-postgres)
-				if docker exec authelia-postgres pg_isready -U authelia >/dev/null 2>&1; then
-					log INFO "Authelia Postgres: healthy"
+				if docker exec authelia-postgres pg_isready -U authelia -d authelia >/dev/null 2>&1; then
+					log INFO "Authelia Postgres: ✓ healthy"
 				else
-					log WARN "Authelia Postgres not ready yet"
+					log WARN "Authelia Postgres: not ready yet"
 				fi
 				;;
 			redis)
 				if docker exec redis redis-cli ping >/dev/null 2>&1; then
-					log INFO "Redis: healthy"
+					log INFO "Redis: ✓ healthy"
 				else
-					log WARN "Redis not ready yet"
+					log WARN "Redis: not ready yet"
 				fi
 				;;
 		esac
 	done
+	
+	echo ""
+	log INFO "💡 Tip: Run './scripts/check-health.sh' for detailed health status"
 }
 
 usage() {
@@ -503,33 +626,51 @@ FREDDY startup script - Single compose file approach
 Usage: $(basename "$0") [options] [service]
 	service: all (default) or specific service names like:
 	         photoprism-postgres, nextcloud-postgres, authelia-postgres, 
-	         redis, authelia, nginx, nextcloud, photoprism, homeassistant
+	         redis, authelia, nginx, nextcloud, photoprism, homeassistant,
+	         audiobookshelf, syncthing
 
 Options:
 	--show-env        Print environment info and exit
 	--stop            Stop and remove services
 	--status          Show compose status
 	--logs            Tail logs (Ctrl+C to exit)
+	--health          Run detailed health checks (uses check-health.sh)
+	--wait            Wait for services to become healthy before exiting
+	--setup-certs     Setup Let's Encrypt certificates (requires root)
 	--no-pull         Do not pull images before start
 	-h, --help        Show this help
 
 Files:
-	docker-compose.yml    Main compose file
-	.env                  Environment variables
-	services/             Configuration files organized by service
+	docker-compose.yml         Main compose file
+	.env                       Environment variables
+	services/                  Configuration files organized by service
+	scripts/check-health.sh    Detailed health check script
+	scripts/cert-manager.sh    SSL certificate management
+	
+Health Checks:
+	This script performs quick health checks after startup. For detailed
+	health monitoring, use: ./scripts/check-health.sh
+
+SSL Certificates:
+	Use --setup-certs to automatically upgrade from self-signed to
+	Let's Encrypt certificates. Requires Cloudflare API credentials.
+	Example: sudo ./start.sh --setup-certs
 USAGE
 }
 
 main() {
-	local do_pull=1 action=start target_service="all"
+	local do_pull=1 action=start target_service="all" wait_healthy=0 setup_certs=0
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
-			--show-env) action=showenv; shift ;;
-			--stop)     action=stop; shift ;;
-			--status)   action=status; shift ;;
-			--logs)     action=logs; shift ;;
-			--no-pull)  do_pull=0; shift ;;
-			-h|--help)  usage; exit 0 ;;
+			--show-env)   action=showenv; shift ;;
+			--stop)       action=stop; shift ;;
+			--status)     action=status; shift ;;
+			--logs)       action=logs; shift ;;
+			--health)     action=health; shift ;;
+			--wait)       wait_healthy=1; shift ;;
+			--setup-certs) setup_certs=1; shift ;;
+			--no-pull)    do_pull=0; shift ;;
+			-h|--help)    usage; exit 0 ;;
 			*) 
 				if [[ " ${SERVICES[*]} all " =~ " $1 " ]]; then
 					target_service="$1"; shift
@@ -544,10 +685,27 @@ main() {
 	case "$action" in
 		showenv)
 			show_environment_info; exit 0 ;;
+		health)
+			if [[ -x "$PROJECT_ROOT/scripts/check-health.sh" ]]; then
+				exec "$PROJECT_ROOT/scripts/check-health.sh"
+			else
+				log ERROR "scripts/check-health.sh not found or not executable"
+				exit 1
+			fi
+			;;
 	esac
 
 	cd "$PROJECT_ROOT"
 	create_env_file
+	
+	# Setup Let's Encrypt certificates if requested
+	if (( setup_certs )); then
+		setup_letsencrypt_certs
+		log INFO "✓ Certificate setup complete. Continue with service startup..."
+		echo ""
+	fi
+	
+	check_certificates
 
 	local target_services=()
 	if [[ "$target_service" == "all" ]]; then
@@ -561,8 +719,8 @@ main() {
 	docker_network_sanity
 
 	log INFO "Ensuring shared networks exist..."
-	docker network create backend || true
-	docker network create frontend || true
+	docker network create backend 2>/dev/null || true
+	docker network create frontend 2>/dev/null || true
 
 	case "$action" in
 		stop)
@@ -580,13 +738,58 @@ main() {
 
 	(( do_pull )) && pull_images "${target_services[@]}"
 	start_stack "${target_services[@]}"
+	
+	# Wait for services to be healthy if requested
+	if (( wait_healthy )); then
+		log INFO "Waiting for services to become healthy (max 3 minutes)..."
+		local max_wait=180  # 3 minutes
+		local waited=0
+		local all_healthy=0
+		
+		while (( waited < max_wait )); do
+			all_healthy=1
+			for service in "${target_services[@]}"; do
+				# Check services that have healthchecks
+				case "$service" in
+					photoprism-postgres|nextcloud-postgres|authelia-postgres|redis|photoprism|nextcloud|homeassistant|authelia|nginx|audiobookshelf|syncthing)
+						local status
+						status=$(docker inspect --format='{{.State.Health.Status}}' "$service" 2>/dev/null || echo "unknown")
+						if [[ "$status" != "healthy" ]]; then
+							all_healthy=0
+							break
+						fi
+						;;
+				esac
+			done
+			
+			if (( all_healthy )); then
+				log INFO "✓ All services are healthy!"
+				break
+			fi
+			
+			sleep 5
+			waited=$((waited + 5))
+			echo -n "."
+		done
+		echo ""
+		
+		if (( ! all_healthy )); then
+			log WARN "Timeout waiting for all services to become healthy"
+			log INFO "Some services may still be initializing. Check status with:"
+			log INFO "  ./scripts/check-health.sh"
+		fi
+	fi
+	
 	health_checks "${target_services[@]}"
 
 	log INFO "Done. Common endpoints:"
 	echo "  Home Assistant: http://localhost:8123"
 	echo "  Nextcloud:      https://localhost:8443"
 	echo "  Photoprism:     http://localhost:2342"
-	# Add more as needed
+	echo "  Audiobookshelf: http://localhost:13378"
+	echo "  Syncthing:      http://localhost:8384"
+	echo ""
+	log INFO "For detailed health status: ./scripts/check-health.sh"
 }
 
 main "$@"
