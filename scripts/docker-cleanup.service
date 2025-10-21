@@ -1,0 +1,21 @@
+[Unit]
+Description=Docker Cache Cleanup for FREDDY
+Documentation=https://github.com/nuniesmith/personal_servers_freddy
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/path/to/freddy
+ExecStart=/path/to/freddy/scripts/cleanup-docker-cache.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=docker-cleanup-freddy
+
+# Security
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

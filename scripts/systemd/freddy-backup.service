@@ -1,0 +1,32 @@
+[Unit]
+Description=FREDDY Backup Service
+Documentation=https://github.com/nuniesmith/personal_servers_freddy
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+
+# Environment
+Environment="BACKUP_BASE_DIR=/mnt/backup/freddy"
+Environment="RETENTION_DAYS=30"
+
+# Working directory
+WorkingDirectory=/path/to/freddy
+
+# Execute backup script
+ExecStart=/path/to/freddy/scripts/backup.sh
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=freddy-backup
+
+# Resource limits
+Nice=19
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target

@@ -71,6 +71,20 @@ volumes:
       o: bind
       device: /mnt/1tb/authelia/postgres
 
+  # Authentik SSO volumes
+  authentik_postgres:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/authentik/postgres
+  authentik_redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/authentik/redis
+
   # Reverse Proxy volumes  
   nginx_config:
     driver: local
@@ -280,76 +294,6 @@ services:
       retries: 3
       start_period: 60s
 
-  # =============================================================================
-  # AUTHENTICATION & SECURITY
-  # =============================================================================
-
-  # authelia - authentication and authorization server
-  authelia:
-    image: authelia/authelia:latest
-    container_name: authelia
-    environment:
-      - TZ=${TZ:-America/Toronto}
-      - AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET=${AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET}
-      - AUTHELIA_SESSION_SECRET=${AUTHELIA_SESSION_SECRET}
-      - AUTHELIA_STORAGE_ENCRYPTION_KEY=${AUTHELIA_STORAGE_ENCRYPTION_KEY}
-      - AUTHELIA_STORAGE_POSTGRES_PASSWORD=${AUTHELIA_STORAGE_POSTGRES_PASSWORD}
-      - AUTHELIA_STORAGE_POSTGRES_DATABASE=${AUTHELIA_DB_NAME:-authelia}
-      - AUTHELIA_STORAGE_POSTGRES_USERNAME=${AUTHELIA_DB_USER:-authelia}
-    volumes:
-      - authelia_config:/config
-    restart: unless-stopped
-    networks:
-      - backend
-      - database
-    depends_on:
-      redis:
-        condition: service_healthy
-      authelia-postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:9091/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 45s
-
-  # redis - session storage for authelia
-  redis:
-    image: redis:alpine
-    container_name: redis
-    restart: unless-stopped
-    networks:
-      - backend
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # postgres database for authelia
-  authelia-postgres:
-    image: postgres:16-alpine
-    container_name: authelia-postgres
-    environment:
-      - POSTGRES_DB=${AUTHELIA_DB_NAME:-authelia}
-      - POSTGRES_USER=${AUTHELIA_DB_USER:-authelia}
-      - POSTGRES_PASSWORD=${AUTHELIA_DB_PASSWORD:-changeme}
-      - TZ=${TZ:-America/Toronto}
-    volumes:
-      - authelia_postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped
-    networks:
-      - database
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${AUTHELIA_DB_USER:-authelia}", "-d", "${AUTHELIA_DB_NAME:-authelia}"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
   # audiobookshelf
   audiobookshelf:
     image: ghcr.io/advplyr/audiobookshelf:latest
@@ -357,11 +301,13 @@ services:
     ports:
       - 13378:80
     volumes:
+      - ./services/audiobookshelf/config:/config
+      - ./services/audiobookshelf/metadata:/metadata
       - ${MEDIA_PATH_AUDIOBOOKS:-/media/audiobooks}:/audiobooks
-      - ${MEDIA_PATH_AUDIOBOOKS_CONFIG:-./services/audiobookshelf/config}:/config
-      - ${MEDIA_PATH_AUDIOBOOKS_METADATA:-./services/audiobookshelf/metadata}:/metadata
     environment:
-      - TZ=America/Toronto
+      - TZ=${TZ:-America/Toronto}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
     networks:
       - backend
     restart: always
@@ -404,3 +350,120 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+
+  # =============================================================================
+  # AUTHENTIK SSO (Single Sign-On)
+  # =============================================================================
+
+  # postgres database for authentik
+  authentik-postgres:
+    image: postgres:16-alpine
+    container_name: authentik-postgres
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "authentik"]
+      timeout: 20s
+      interval: 10s
+      retries: 5
+    volumes:
+      - authentik_postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: ${AUTHENTIK_POSTGRES_PASSWORD}
+      POSTGRES_USER: authentik
+      POSTGRES_DB: authentik
+      TZ: ${TZ:-America/Toronto}
+    networks:
+      - database
+
+  # redis cache for authentik
+  authentik-redis:
+    image: redis:alpine
+    container_name: authentik-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      timeout: 20s
+      interval: 10s
+      retries: 5
+    volumes:
+      - authentik_redis:/data
+    networks:
+      - backend
+
+  # authentik server
+  authentik-server:
+    image: ghcr.io/goauthentik/server:latest
+    container_name: authentik-server
+    restart: unless-stopped
+    command: server
+    environment:
+      AUTHENTIK_REDIS__HOST: authentik-redis
+      AUTHENTIK_POSTGRESQL__HOST: authentik-postgres
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_POSTGRES_PASSWORD}
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY}
+      # Email configuration
+      AUTHENTIK_EMAIL__HOST: ${EMAIL_HOST}
+      AUTHENTIK_EMAIL__PORT: ${EMAIL_PORT}
+      AUTHENTIK_EMAIL__USE_TLS: "true"
+      AUTHENTIK_EMAIL__FROM: ${EMAIL_FROM}
+      AUTHENTIK_EMAIL__USERNAME: ${EMAIL_USERNAME}
+      AUTHENTIK_EMAIL__PASSWORD: ${EMAIL_PASSWORD}
+      # Error reporting
+      AUTHENTIK_ERROR_REPORTING__ENABLED: ${AUTHENTIK_ERROR_REPORTING__ENABLED:-false}
+      TZ: ${TZ:-America/Toronto}
+    volumes:
+      - ./services/authentik/media:/media
+      - ./services/authentik/custom-templates:/templates
+    ports:
+      - "9000:9000"
+      - "9443:9443"
+    depends_on:
+      - authentik-postgres
+      - authentik-redis
+    networks:
+      - backend
+      - database
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider --quiet http://localhost:9000/-/health/live/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
+  # authentik worker
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:latest
+    container_name: authentik-worker
+    restart: unless-stopped
+    command: worker
+    user: root
+    environment:
+      AUTHENTIK_REDIS__HOST: authentik-redis
+      AUTHENTIK_POSTGRESQL__HOST: authentik-postgres
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_POSTGRES_PASSWORD}
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY}
+      # Email configuration
+      AUTHENTIK_EMAIL__HOST: ${EMAIL_HOST}
+      AUTHENTIK_EMAIL__PORT: ${EMAIL_PORT}
+      AUTHENTIK_EMAIL__USE_TLS: "true"
+      AUTHENTIK_EMAIL__FROM: ${EMAIL_FROM}
+      AUTHENTIK_EMAIL__USERNAME: ${EMAIL_USERNAME}
+      AUTHENTIK_EMAIL__PASSWORD: ${EMAIL_PASSWORD}
+      # Error reporting
+      AUTHENTIK_ERROR_REPORTING__ENABLED: ${AUTHENTIK_ERROR_REPORTING__ENABLED:-false}
+      TZ: ${TZ:-America/Toronto}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./services/authentik/media:/media
+      - ./services/authentik/certs:/certs
+      - ./services/authentik/custom-templates:/templates
+    depends_on:
+      - authentik-postgres
+      - authentik-redis
+    networks:
+      - backend
+      - database

@@ -1,0 +1,278 @@
+# FREDDY Staging Environment
+# Isolated Docker Compose configuration for testing changes before production
+#
+# Usage:
+#   docker compose -f docker-compose.staging.yml up -d
+#   docker compose -f docker-compose.staging.yml down
+#
+
+version: '3.8'
+
+# ============================================================================
+# Networks
+# ============================================================================
+
+networks:
+  staging-frontend:
+    name: staging-frontend
+    driver: bridge
+  staging-backend:
+    name: staging-backend
+    driver: bridge
+    internal: true
+  staging-database:
+    name: staging-database
+    driver: bridge
+    internal: true
+
+# ============================================================================
+# Volumes
+# ============================================================================
+
+volumes:
+  # Staging-specific named volumes (isolated from production)
+  staging-authentik-postgres-data:
+    name: freddy_staging_authentik_postgres_data
+  staging-authentik-redis-data:
+    name: freddy_staging_authentik_redis_data
+  staging-nextcloud-postgres-data:
+    name: freddy_staging_nextcloud_postgres_data
+  staging-photoprism-mariadb-data:
+    name: freddy_staging_photoprism_mariadb_data
+
+# ============================================================================
+# Services
+# ============================================================================
+
+services:
+
+  # ==========================================================================
+  # Nginx Reverse Proxy (Staging)
+  # ==========================================================================
+  
+  nginx-staging:
+    image: nginx:latest
+    container_name: nginx-staging
+    restart: unless-stopped
+    ports:
+      - "8080:80"      # Staging HTTP (non-conflicting with prod port 80)
+      - "8443:443"     # Staging HTTPS (non-conflicting with prod port 443)
+    volumes:
+      # Use staging nginx configs
+      - ./services/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./services/nginx/conf.d-staging:/etc/nginx/conf.d:ro
+      # SSL certificates (can reuse from production or use self-signed)
+      - /opt/ssl/7gram.xyz:/opt/ssl/7gram.xyz:ro
+    networks:
+      - staging-frontend
+      - staging-backend
+    depends_on:
+      - authentik-server-staging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==========================================================================
+  # Authentik SSO (Staging)
+  # ==========================================================================
+
+  authentik-postgres-staging:
+    image: postgres:16-alpine
+    container_name: authentik-postgres-staging
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: authentik
+      POSTGRES_USER: authentik
+      POSTGRES_PASSWORD: ${STAGING_AUTHENTIK_POSTGRES_PASSWORD:-staging_authentik_pass}
+    volumes:
+      - staging-authentik-postgres-data:/var/lib/postgresql/data
+    networks:
+      - staging-database
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U authentik"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  authentik-redis-staging:
+    image: redis:alpine
+    container_name: authentik-redis-staging
+    restart: unless-stopped
+    command: --save 60 1 --loglevel warning
+    volumes:
+      - staging-authentik-redis-data:/data
+    networks:
+      - staging-backend
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  authentik-server-staging:
+    image: ghcr.io/goauthentik/server:latest
+    container_name: authentik-server-staging
+    restart: unless-stopped
+    command: server
+    environment:
+      AUTHENTIK_SECRET_KEY: ${STAGING_AUTHENTIK_SECRET_KEY}
+      AUTHENTIK_POSTGRESQL__HOST: authentik-postgres-staging
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${STAGING_AUTHENTIK_POSTGRES_PASSWORD:-staging_authentik_pass}
+      AUTHENTIK_REDIS__HOST: authentik-redis-staging
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+      # Staging-specific settings
+      AUTHENTIK_LOG_LEVEL: debug
+      AUTHENTIK_COOKIE_DOMAIN: .staging.7gram.xyz
+    volumes:
+      - ./services/authentik/config-staging/media:/media
+      - ./services/authentik/config-staging/custom-templates:/templates
+    ports:
+      - "19000:9000"   # HTTP (staging, non-conflicting)
+      - "19443:9443"   # HTTPS (staging, non-conflicting)
+    networks:
+      - staging-frontend
+      - staging-backend
+      - staging-database
+    depends_on:
+      - authentik-postgres-staging
+      - authentik-redis-staging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  authentik-worker-staging:
+    image: ghcr.io/goauthentik/server:latest
+    container_name: authentik-worker-staging
+    restart: unless-stopped
+    command: worker
+    environment:
+      AUTHENTIK_SECRET_KEY: ${STAGING_AUTHENTIK_SECRET_KEY}
+      AUTHENTIK_POSTGRESQL__HOST: authentik-postgres-staging
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${STAGING_AUTHENTIK_POSTGRES_PASSWORD:-staging_authentik_pass}
+      AUTHENTIK_REDIS__HOST: authentik-redis-staging
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+      AUTHENTIK_LOG_LEVEL: debug
+    volumes:
+      - ./services/authentik/config-staging/media:/media
+      - ./services/authentik/config-staging/certs:/certs
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - staging-backend
+      - staging-database
+    depends_on:
+      - authentik-postgres-staging
+      - authentik-redis-staging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==========================================================================
+  # Nextcloud (Staging) - Optional, uncomment to test
+  # ==========================================================================
+
+  # nextcloud-postgres-staging:
+  #   image: postgres:16-alpine
+  #   container_name: nextcloud-postgres-staging
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_DB: nextcloud
+  #     POSTGRES_USER: nextcloud
+  #     POSTGRES_PASSWORD: ${STAGING_NEXTCLOUD_POSTGRES_PASSWORD:-staging_nextcloud_pass}
+  #   volumes:
+  #     - staging-nextcloud-postgres-data:/var/lib/postgresql/data
+  #   networks:
+  #     - staging-database
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "3"
+
+  # nextcloud-staging:
+  #   image: nextcloud:latest
+  #   container_name: nextcloud-staging
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_HOST: nextcloud-postgres-staging
+  #     POSTGRES_DB: nextcloud
+  #     POSTGRES_USER: nextcloud
+  #     POSTGRES_PASSWORD: ${STAGING_NEXTCLOUD_POSTGRES_PASSWORD:-staging_nextcloud_pass}
+  #     NEXTCLOUD_ADMIN_USER: ${STAGING_NEXTCLOUD_ADMIN_USER:-admin}
+  #     NEXTCLOUD_ADMIN_PASSWORD: ${STAGING_NEXTCLOUD_ADMIN_PASSWORD:-admin}
+  #     NEXTCLOUD_TRUSTED_DOMAINS: staging-nc.7gram.xyz localhost
+  #     OVERWRITEPROTOCOL: https
+  #     OVERWRITEHOST: staging-nc.7gram.xyz
+  #   volumes:
+  #     - ./services/nextcloud/config-staging:/var/www/html/config
+  #     - ./services/nextcloud/data-staging:/var/www/html/data
+  #   networks:
+  #     - staging-frontend
+  #     - staging-backend
+  #     - staging-database
+  #   depends_on:
+  #     - nextcloud-postgres-staging
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "3"
+
+# ============================================================================
+# Notes
+# ============================================================================
+#
+# Staging Environment Characteristics:
+# - Separate networks (staging-frontend, staging-backend, staging-database)
+# - Separate volumes (all prefixed with staging-)
+# - Non-conflicting ports (8080/8443 instead of 80/443)
+# - Isolated configs (services/*/config-staging directories)
+# - Debug logging enabled
+# - Can run alongside production
+#
+# To use staging environment:
+#
+# 1. Create staging configs:
+#    mkdir -p services/authentik/config-staging
+#    mkdir -p services/nginx/conf.d-staging
+#
+# 2. Copy and modify configs for staging:
+#    cp -r services/authentik/config/* services/authentik/config-staging/
+#    cp -r services/nginx/conf.d/* services/nginx/conf.d-staging/
+#    # Update staging configs with staging-specific settings
+#
+# 3. Create .env.staging file:
+#    cp .env .env.staging
+#    # Update with staging credentials
+#
+# 4. Start staging environment:
+#    docker compose -f docker-compose.staging.yml --env-file .env.staging up -d
+#
+# 5. Access staging services:
+#    - Authentik: http://localhost:19000 or https://staging-auth.7gram.xyz:8443
+#    - Nginx: http://localhost:8080 or https://localhost:8443
+#
+# 6. Test changes in staging, then apply to production
+#
+# 7. Stop staging environment:
+#    docker compose -f docker-compose.staging.yml down
+#
