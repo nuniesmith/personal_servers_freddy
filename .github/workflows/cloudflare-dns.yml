@@ -1,4 +1,4 @@
-name: Update Cloudflare DNS Records
+name: Cloudflare DNS Records
 
 on:
   workflow_dispatch:
@@ -20,8 +20,8 @@ env:
     nc.7gram.xyz
     photo.7gram.xyz
     home.7gram.xyz
-    octobot-spot.7gram.xyz
-    octobot-futures.7gram.xyz
+    obs.7gram.xyz
+    obf.7gram.xyz
     sync-freddy.7gram.xyz
     sync-sullivan.7gram.xyz
     sync-oryx.7gram.xyz
@@ -45,7 +45,7 @@ env:
 jobs:
   update-dns:
     runs-on: ubuntu-latest
-    name: Update Cloudflare DNS
+    name: Cloudflare DNS
     
     steps:
       - name: Checkout repository
@@ -70,7 +70,7 @@ jobs:
           fi
           echo "✓ Valid IP address: $TARGET_IP"
 
-      - name: Update Cloudflare DNS records
+      - name: Cloudflare DNS records
         env:
           CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CF_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
