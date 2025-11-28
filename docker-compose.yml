@@ -108,54 +108,102 @@ volumes:
       device: /mnt/1tb/syncthing/data
 
   # OctoBot volumes
-  octobot_spot_logs:
+  octobot_spot_demo_logs:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /mnt/1tb/octobot/spot/logs
-  octobot_spot_backtesting:
+      device: /mnt/1tb/octobot/spot-demo/logs
+  octobot_spot_demo_backtesting:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /mnt/1tb/octobot/spot/backtesting
-  octobot_spot_tentacles:
+      device: /mnt/1tb/octobot/spot-demo/backtesting
+  octobot_spot_demo_tentacles:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /mnt/1tb/octobot/spot/tentacles
-  octobot_spot_user:
+      device: /mnt/1tb/octobot/spot-demo/tentacles
+  octobot_spot_demo_user:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /mnt/1tb/octobot/spot/user
-  octobot_futures_logs:
+      device: /mnt/1tb/octobot/spot-demo/user
+  octobot_spot_live_logs:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /mnt/1tb/octobot/futures/logs
-  octobot_futures_backtesting:
+      device: /mnt/1tb/octobot/spot-live/logs
+  octobot_spot_live_backtesting:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /mnt/1tb/octobot/futures/backtesting
-  octobot_futures_tentacles:
+      device: /mnt/1tb/octobot/spot-live/backtesting
+  octobot_spot_live_tentacles:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /mnt/1tb/octobot/futures/tentacles
-  octobot_futures_user:
+      device: /mnt/1tb/octobot/spot-live/tentacles
+  octobot_spot_live_user:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /mnt/1tb/octobot/futures/user
+      device: /mnt/1tb/octobot/spot-live/user
+  octobot_futures_demo_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/octobot/futures-demo/logs
+  octobot_futures_demo_backtesting:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/octobot/futures-demo/backtesting
+  octobot_futures_demo_tentacles:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/octobot/futures-demo/tentacles
+  octobot_futures_demo_user:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/octobot/futures-demo/user
+  octobot_futures_live_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/octobot/futures-live/logs
+  octobot_futures_live_backtesting:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/octobot/futures-live/backtesting
+  octobot_futures_live_tentacles:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/octobot/futures-live/tentacles
+  octobot_futures_live_user:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/octobot/futures-live/user
 
 # Custom networks for service isolation
 networks:
@@ -522,17 +570,17 @@ services:
   # TRADING BOTS
   # =============================================================================
 
-  # octobot-spot - cryptocurrency trading bot for spot markets
-  octobot-spot:
+  # octobot-spot-demo - cryptocurrency trading bot for spot demo account
+  octobot-spot-demo:
     image: drakkarsoftware/octobot:stable
-    container_name: octobot-spot
+    container_name: octobot-spot-demo
     environment:
       - TZ=${TZ:-America/Toronto}
     volumes:
-      - octobot_spot_logs:/octobot/logs
-      - octobot_spot_backtesting:/octobot/backtesting
-      - octobot_spot_tentacles:/octobot/tentacles
-      - octobot_spot_user:/octobot/user
+      - octobot_spot_demo_logs:/octobot/logs
+      - octobot_spot_demo_backtesting:/octobot/backtesting
+      - octobot_spot_demo_tentacles:/octobot/tentacles
+      - octobot_spot_demo_user:/octobot/user
     ports:
       - "5001:5001"
     restart: unless-stopped
@@ -545,19 +593,65 @@ services:
       retries: 3
       start_period: 60s
 
-  # octobot-futures - cryptocurrency trading bot for futures markets
-  octobot-futures:
+  # octobot-spot-live - cryptocurrency trading bot for spot live account
+  octobot-spot-live:
     image: drakkarsoftware/octobot:stable
-    container_name: octobot-futures
+    container_name: octobot-spot-live
     environment:
       - TZ=${TZ:-America/Toronto}
     volumes:
-      - octobot_futures_logs:/octobot/logs
-      - octobot_futures_backtesting:/octobot/backtesting
-      - octobot_futures_tentacles:/octobot/tentacles
-      - octobot_futures_user:/octobot/user
+      - octobot_spot_live_logs:/octobot/logs
+      - octobot_spot_live_backtesting:/octobot/backtesting
+      - octobot_spot_live_tentacles:/octobot/tentacles
+      - octobot_spot_live_user:/octobot/user
     ports:
       - "5002:5001"
+    restart: unless-stopped
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5001 || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # octobot-futures-demo - cryptocurrency trading bot for futures demo account
+  octobot-futures-demo:
+    image: drakkarsoftware/octobot:stable
+    container_name: octobot-futures-demo
+    environment:
+      - TZ=${TZ:-America/Toronto}
+    volumes:
+      - octobot_futures_demo_logs:/octobot/logs
+      - octobot_futures_demo_backtesting:/octobot/backtesting
+      - octobot_futures_demo_tentacles:/octobot/tentacles
+      - octobot_futures_demo_user:/octobot/user
+    ports:
+      - "5003:5001"
+    restart: unless-stopped
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5001 || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # octobot-futures-live - cryptocurrency trading bot for futures live account
+  octobot-futures-live:
+    image: drakkarsoftware/octobot:stable
+    container_name: octobot-futures-live
+    environment:
+      - TZ=${TZ:-America/Toronto}
+    volumes:
+      - octobot_futures_live_logs:/octobot/logs
+      - octobot_futures_live_backtesting:/octobot/backtesting
+      - octobot_futures_live_tentacles:/octobot/tentacles
+      - octobot_futures_live_user:/octobot/user
+    ports:
+      - "5004:5001"
     restart: unless-stopped
     networks:
       - backend
