@@ -107,6 +107,56 @@ volumes:
       o: bind
       device: /mnt/1tb/syncthing/data
 
+  # OctoBot volumes
+  octobot_spot_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/octobot/spot/logs
+  octobot_spot_backtesting:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/octobot/spot/backtesting
+  octobot_spot_tentacles:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/octobot/spot/tentacles
+  octobot_spot_user:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/octobot/spot/user
+  octobot_futures_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/octobot/futures/logs
+  octobot_futures_backtesting:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/octobot/futures/backtesting
+  octobot_futures_tentacles:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/octobot/futures/tentacles
+  octobot_futures_user:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/1tb/octobot/futures/user
+
 # Custom networks for service isolation
 networks:
   frontend:
@@ -467,3 +517,53 @@ services:
     networks:
       - backend
       - database
+
+  # =============================================================================
+  # TRADING BOTS
+  # =============================================================================
+
+  # octobot-spot - cryptocurrency trading bot for spot markets
+  octobot-spot:
+    image: drakkarsoftware/octobot:stable
+    container_name: octobot-spot
+    environment:
+      - TZ=${TZ:-America/Toronto}
+    volumes:
+      - octobot_spot_logs:/octobot/logs
+      - octobot_spot_backtesting:/octobot/backtesting
+      - octobot_spot_tentacles:/octobot/tentacles
+      - octobot_spot_user:/octobot/user
+    ports:
+      - "5001:5001"
+    restart: unless-stopped
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5001 || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # octobot-futures - cryptocurrency trading bot for futures markets
+  octobot-futures:
+    image: drakkarsoftware/octobot:stable
+    container_name: octobot-futures
+    environment:
+      - TZ=${TZ:-America/Toronto}
+    volumes:
+      - octobot_futures_logs:/octobot/logs
+      - octobot_futures_backtesting:/octobot/backtesting
+      - octobot_futures_tentacles:/octobot/tentacles
+      - octobot_futures_user:/octobot/user
+    ports:
+      - "5002:5001"
+    restart: unless-stopped
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5001 || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
