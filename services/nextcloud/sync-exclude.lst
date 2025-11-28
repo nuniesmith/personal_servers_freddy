@@ -1,0 +1,114 @@
+# Nextcloud Desktop Client - Custom Sync Exclusions
+# This file contains patterns for files/directories to skip during sync
+# Add this content to your client's sync-exclude.lst file
+# 
+# Location on client machines:
+# - Linux:   ~/.config/Nextcloud/sync-exclude.lst
+# - Windows: %APPDATA%\Nextcloud\sync-exclude.lst
+# - macOS:   ~/Library/Application Support/Nextcloud/sync-exclude.lst
+#
+# Pattern syntax:
+# - Use * to match any characters
+# - Use ? to match a single character
+# - Patterns ending with / apply to directories
+# - Patterns are case-sensitive
+# - Recursive matching: patterns match at any depth unless anchored
+
+# ============================================================================
+# Development & Build Artifacts
+# ============================================================================
+
+# Git internal objects (prevents syncing the entire .git/objects tree)
+.git/objects/*
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Rust build directories and artifacts
+target/
+Cargo.lock
+
+# Rust global package cache (if syncing home directory)
+.cargo/registry/
+.cargo/git/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Java/Maven/Gradle
+.gradle/
+build/
+*.class
+*.jar
+*.war
+
+# C/C++ compiled objects
+*.o
+*.so
+*.a
+*.dylib
+*.exe
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ============================================================================
+# System & Temporary Files
+# ============================================================================
+
+# Thumbnails and cache
+.thumbnails/
+.cache/
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+~$*
+.~lock.*
+
+# Log files
+*.log
+
+# ============================================================================
+# Large Media & Database Files (Optional - uncomment if needed)
+# ============================================================================
+
+# Uncomment the following if you want to exclude large binaries
+# *.iso
+# *.dmg
+# *.img
+# *.vmdk
+
+# Uncomment to exclude database dumps
+# *.sql
+# *.db
+# *.sqlite
+
+# ============================================================================
+# Custom Exclusions
+# ============================================================================
+
+# Add your custom patterns below this line
+# Example: 
+# MyLargeFolder/
+# */specific-subdir/
+
